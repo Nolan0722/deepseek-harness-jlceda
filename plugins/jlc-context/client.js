@@ -1,0 +1,224 @@
+// Runs in the sandboxed DSH iframe, before the client plugin. No Electron preload.
+(() => {
+  const parentOrigin='https://client',channel='jlc-dsh-frame-v1';
+  if(window.parent===window)throw Error('JLC DSH requires its editor iframe');
+  const pending=new Map(),listeners=new Set();let sequence=0,debug=false;
+  function request(action,extra={}){
+    return new Promise((resolve,reject)=>{
+      const id=String(++sequence),timer=setTimeout(()=>{pending.delete(id);reject(Error('EDA host request timed out'));},20000);
+      pending.set(id,{resolve,reject,timer});
+      window.parent.postMessage({channel,type:'request',id,action,...extra},parentOrigin);
+    });
+  }
+  window.addEventListener('message',event=>{
+    if(event.source!==window.parent||event.origin!==parentOrigin||event.data?.channel!==channel)return;
+    const message=event.data;
+    if(message.type==='health'){for(const listener of listeners)listener(message.value);return;}
+    if(message.type!=='response')return;
+    const entry=pending.get(message.id);if(!entry)return;
+    pending.delete(message.id);clearTimeout(entry.timer);message.ok?entry.resolve(message.value):entry.reject(Error(message.error));
+  });
+  const ready=request('ready').then(value=>{debug=value.debug===true;});
+  window.jlcEDAContext=Object.freeze({get debug(){return debug;},ready,
+    current:()=>ready.then(()=>request('current')),health:()=>ready.then(()=>request('health')),
+    select:conversationId=>ready.then(()=>request('select',{conversationId})),
+    onHealth:callback=>{listeners.add(callback);return()=>listeners.delete(callback);}});
+  window.addEventListener('pagehide',()=>{for(const entry of pending.values()){clearTimeout(entry.timer);entry.reject(Error('DSH frame closed'));}pending.clear();listeners.clear();});
+})();
+
+window.__ModuleLoader__.load({id:'jlc-dsh-context',factory:require=>{
+  const React=require('react');
+  const {IconSettingsOutlineRegular}=require('@deepseek-ai/dsh-client-ui-primitives');
+  const h=React.createElement;
+  const canonical=value=>(value||'').replaceAll('\\','/').toLowerCase();
+  const projectKey=target=>JSON.stringify([target.projectId,canonical(target.projectPath),canonical(target.workspaceDirectory)]);
+  const CSS=`
+    .jlc-eda-binding{position:relative;box-sizing:border-box;display:flex;flex:0 0 auto;align-self:center;align-items:center;gap:12px;flex-wrap:wrap;width:calc(100% - 2 * var(--dsh-composer-side-clearance,16px));max-width:100%;min-height:44px;margin:0 auto;padding:9px 12px;border:1px solid var(--dsw-alias-border-l1,#e1e5eb);border-radius:10px;background:var(--dsw-specific-menu,#f7f8fa);color:var(--dsw-alias-label-primary,#252a32);font-family:inherit;font-size:12px;line-height:18px;isolation:isolate}
+    .jlc-eda-binding__copy{flex:1 1 160px;min-width:0;display:flex;flex-direction:column;gap:2px}
+    .jlc-eda-binding__line{display:flex;align-items:center;gap:7px;min-width:0}
+    .jlc-eda-binding__dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--jlc-accent,#5588ff)}
+    .jlc-eda-binding[data-jlc-binding="stale"] .jlc-eda-binding__dot,.jlc-eda-binding[data-jlc-binding="error"] .jlc-eda-binding__dot{background:#c18b36}
+    .jlc-eda-binding__label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+    .jlc-eda-binding__directory{color:var(--dsw-alias-label-tertiary,#69717d);font-size:11px;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .jlc-eda-binding__mcp{color:var(--dsw-alias-label-secondary,#5c6573);font-size:11px;line-height:16px;overflow-wrap:anywhere}
+    .jlc-eda-binding__mcp[data-jlc-mcp="connected"]{color:var(--dsw-alias-success-default,#28805c)}
+    .jlc-eda-binding__button{appearance:none;box-sizing:border-box;display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;min-height:28px;max-width:100%;margin:0;padding:4px 9px;border:1px solid var(--dsw-alias-border-l1,#d5dce5);border-radius:6px;background:var(--dsw-specific-input,#fff);color:inherit;font:inherit;line-height:18px;white-space:normal;cursor:pointer}
+    .jlc-eda-binding__button:hover{border-color:var(--jlc-accent,#5588ff);background:var(--dsw-specific-button-secondary-hover,#eef3fa)}
+    .jlc-eda-binding__button:focus-visible{outline:2px solid var(--jlc-accent,#5588ff);outline-offset:2px}
+    .jlc-eda-binding__button:disabled{opacity:.55;cursor:wait}
+  `;
+  function createProjectController(ctx){
+    const listeners=new Set(),conversations=new Map();
+    let snapshot={current:null,syncing:false,error:''},seenKey,pending=false,disposed=false;
+    const publish=patch=>{if(disposed)return;snapshot={...snapshot,...patch};for(const listener of listeners)listener();};
+    const source={subscribe:listener=>{listeners.add(listener);return()=>listeners.delete(listener)},getSnapshot:()=>snapshot};
+    async function openTarget(target,fresh=false,options={}){
+      const key=projectKey(target),directory=target.workspaceDirectory;
+      if(!directory)throw Error('当前工程没有可用的本地目录，无法自动设置工作区。');
+      const workspace=await ctx.workspaces.create({path:directory});
+      let id=!fresh&&conversations.get(key);
+      if(!id||!ctx.sessions.list.getSnapshot().byId[id])id=await ctx.sessions.create({workspaceId:workspace.workspaceId,...(options.agentPreset===undefined?{}:{agentPreset:options.agentPreset})});
+      const latest=await window.jlcEDAContext.current();
+      if(projectKey(latest)!==key)throw Error('工程在切换工作区时发生变化，正在重新同步。');
+      conversations.set(key,id);
+      await window.jlcEDAContext.select(id);
+      if(disposed)return id;
+      ctx.uiWorkspace.openSession(id);
+      seenKey=key;publish({current:latest,syncing:false,error:''});
+      return id;
+    }
+    async function openCurrent(fresh=false,options={}){
+      while(pending&&!disposed)await new Promise(resolve=>setTimeout(resolve,50));
+      if(disposed)throw Error('工程侧栏已关闭。');
+      pending=true;publish({syncing:true,error:''});
+      try{return await openTarget(await window.jlcEDAContext.current(),fresh,options)}
+      catch(error){publish({syncing:false,error:error.message});throw error}
+      finally{pending=false;}
+    }
+    async function refresh(){
+      if(pending||disposed)return;pending=true;
+      try{
+        const target=await window.jlcEDAContext.current(),key=projectKey(target);
+        publish({current:target,error:target.projectId&&!target.workspaceDirectory?'此工程没有本地目录，工作区未自动切换。':''});
+        if(key!==seenKey){
+          if(target.workspaceDirectory){publish({syncing:true});await openTarget(target);}
+          else{seenKey=key;publish({syncing:false,error:'此工程没有本地目录，工作区未自动切换。'});}
+        }
+      }catch(error){if(!disposed)publish({syncing:false,error:error.message})}
+      finally{pending=false;}
+    }
+    const timer=setInterval(refresh,1500);refresh();
+    return {source,openCurrent,dispose(){disposed=true;clearInterval(timer);listeners.clear();}};
+  }
+  return {inject:['slots','sessions','uiWorkspace','workspaces','locale'],async apply(ctx){
+    await window.jlcEDAContext.ready;
+    const style=document.createElement('style');style.textContent=CSS;style.id='jlc-eda-binding-style';document.head.appendChild(style);
+    const controller=createProjectController(ctx);
+    ctx.provide('jlcProject',{newConversation:options=>controller.openCurrent(true,options)});
+    ctx.effect(()=>()=>{controller.dispose();style.remove();},'jlc-eda project workspace lifecycle');
+    // These are project deployment occupants of the official branding/settings slots.
+    ctx.effect(()=>ctx.locale.register('jlceda.sidebar',{
+      zh:{name:'JLCEDA Agent',settings:'设置',diagnostics:'连接与诊断',engine:'由 DeepSeek Harness 驱动',refresh:'刷新状态',waiting:'正在读取实际状态…',project:'工程',directory:'工程目录',window:'EDA 窗口',document:'活动文档',connection:'MCP 连接',none:'未打开',unavailable:'暂不可用'},
+      en:{name:'JLCEDA Agent',settings:'Settings',diagnostics:'Connection & diagnostics',engine:'Powered by DeepSeek Harness',refresh:'Refresh status',waiting:'Reading live state…',project:'Project',directory:'Project directory',window:'EDA window',document:'Active document',connection:'MCP connection',none:'Not open',unavailable:'Unavailable'},
+    }),'jlc-sidebar dictionaries');
+    const sidebarCSS=document.createElement('style');sidebarCSS.textContent=`
+      html:root[data-jlc-theme="brand"] body{
+        --jlc-accent:#5588ff;
+        --dsw-static-deepseek-50:color-mix(in srgb,var(--jlc-accent) 6%,white);
+        --dsw-static-deepseek-100:color-mix(in srgb,var(--jlc-accent) 12%,white);
+        --dsw-static-deepseek-200:color-mix(in srgb,var(--jlc-accent) 22%,white);
+        --dsw-static-deepseek-300:color-mix(in srgb,var(--jlc-accent) 38%,white);
+        --dsw-static-deepseek-400:color-mix(in srgb,var(--jlc-accent) 65%,white);
+        --dsw-static-deepseek-450:color-mix(in srgb,var(--jlc-accent) 85%,white);
+        --dsw-static-deepseek-500:var(--jlc-accent);
+        --dsw-static-deepseek-600:color-mix(in srgb,var(--jlc-accent) 88%,black);
+        --dsw-static-deepseek-700-delete:color-mix(in srgb,var(--jlc-accent) 70%,black);
+        --dsw-static-deepseek-800:color-mix(in srgb,var(--jlc-accent) 36%,#1b1b1f);
+        --dsw-static-deepseek-900:color-mix(in srgb,var(--jlc-accent) 18%,#1b1b1f);
+        --dsw-gradient-onboarding-blue-stops:var(--dsw-static-deepseek-600) 18.75%,var(--jlc-accent) 51.78%,var(--dsw-static-deepseek-300) 86.252%,var(--dsw-static-deepseek-600);
+        --dsw-alias-bg-document-selection:color-mix(in srgb,var(--jlc-accent) 40%,transparent);
+        --dsw-alias-label-deep-diving:color-mix(in srgb,var(--jlc-accent) 70%,#1b1b1f);
+        --dsw-alias-label-deep-diving-shimmer:color-mix(in srgb,var(--jlc-accent) 30%,#1b1b1f);
+        --dsw-alias-brand-primary:var(--jlc-accent);
+        --dsw-alias-brand-text:var(--jlc-accent);
+        --dsw-alias-brand-primary-new-colorprimary-new-color:var(--jlc-accent);
+        --dsw-alias-button-primary-fill:var(--jlc-accent);
+        --dsw-alias-button-info-fill:var(--jlc-accent);
+        --dsw-alias-button-primary-hover:color-mix(in srgb,var(--jlc-accent) 88%,black);
+        --dsw-alias-button-info-hover:color-mix(in srgb,var(--jlc-accent) 88%,black);
+        --dsw-alias-state-business-primary:var(--jlc-accent);
+        --dsw-alias-state-business-tertiary:color-mix(in srgb,var(--jlc-accent) 16%,transparent);
+        --dsw-alias-link:var(--jlc-accent);
+        --dsw-alias-onboarding-accent:var(--jlc-accent);
+        --dsw-focus-ring-color:var(--jlc-accent);
+      }
+      html:root[data-jlc-theme="brand"] body[data-ds-dark-theme]{
+        --dsw-alias-label-deep-diving:color-mix(in srgb,var(--jlc-accent) 55%,var(--dsw-static-neutral-bluish-400));
+        --dsw-alias-label-deep-diving-shimmer:color-mix(in srgb,var(--jlc-accent) 35%,white);
+      }
+      .jlc-sidebar-brand{display:flex;align-items:center;gap:7px;min-width:0;font-weight:600;font-size:14px;color:inherit}
+      .jlc-sidebar-action{display:flex;align-items:center;gap:9px;min-height:36px;width:100%;padding:8px;border:0;border-radius:7px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+      .jlc-sidebar-action:hover{background:var(--dsw-specific-button-secondary-hover,#eef3fa)}
+      .jlc-sidebar-action:focus-visible{outline:2px solid var(--jlc-accent);outline-offset:-2px}
+      .jlc-sidebar-action[data-wide="false"]{justify-content:center;padding:7px}
+      .jlc-sidebar-diagnostics{padding:16px;min-width:0;font-size:12px;line-height:1.6;color:var(--dsw-alias-label-primary,#252a32)}
+      .jlc-sidebar-diagnostics dl{display:grid;grid-template-columns:90px minmax(0,1fr);gap:9px;margin:18px 0}
+      .jlc-sidebar-diagnostics dd{margin:0;overflow-wrap:anywhere;white-space:pre-wrap}
+      .jlc-sidebar-diagnostics dt,.jlc-sidebar-engine{color:var(--dsw-alias-label-tertiary,#69717d)}
+    `;document.documentElement.dataset.jlcTheme='brand';document.head.appendChild(sidebarCSS);ctx.effect(()=>()=>{sidebarCSS.remove();delete document.documentElement.dataset.jlcTheme;},'jlc-sidebar styles');
+    function Mark({size=24}){return h('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none','aria-hidden':true},
+      h('rect',{x:5,y:5,width:14,height:14,rx:4,stroke:'currentColor',strokeWidth:1.6}),
+      h('path',{d:'M9 9h6v6H9zM9 1v4m6-4v4M9 19v4m6-4v4M1 9h4m-4 6h4M19 9h4m-4 6h4',stroke:'currentColor',strokeWidth:1.6,strokeLinecap:'round'}));}
+    function Brand({t}){return h('span',{className:'jlc-sidebar-brand','data-jlc-brand':true},t('name'));}
+    function Settings({wide,settingsOpen,openSettings,t}){return h('button',{type:'button',className:'jlc-sidebar-action','data-wide':String(wide),'data-jlc-settings':true,'data-jlc-settings-icon':'gear','aria-label':t('settings'),title:t('settings'),'aria-haspopup':'dialog','aria-expanded':settingsOpen,onClick:openSettings},h(IconSettingsOutlineRegular,{size:18}),wide&&h('span',null,t('settings')));}
+    function Diagnostics({t}){
+      const [value,setValue]=React.useState(null),[error,setError]=React.useState('');
+      async function read(){try{const [target,mcp]=await Promise.all([window.jlcEDAContext.current(),window.jlcEDAContext.health()]);setValue({target,mcp});setError('');}catch(e){setError(e.message);}}
+      React.useEffect(()=>{let alive=true;Promise.all([window.jlcEDAContext.current(),window.jlcEDAContext.health()]).then(([target,mcp])=>{if(alive)setValue({target,mcp});},e=>{if(alive)setError(e.message);});return()=>{alive=false;};},[]);
+      const target=value?.target,mcp=value?.mcp;
+      const rows=target?[[t('project'),target.projectName||t('none')],[t('directory'),target.projectDirectory||t('none')],[t('window'),String(target.windowId)],[t('document'),target.documentName||target.documentId||t('none')],[t('connection'),`${mcp.phase} · Bridge ${mcp.bridgeHealthy?'✓':'—'} · ${mcp.bridgeVersion||mcp.serverVersion||''}`]]:[];
+      return h('section',{className:'jlc-sidebar-diagnostics','data-jlc-diagnostics':true},h('h3',null,t('diagnostics')),
+        error?h('p',{role:'alert'},error):!value?h('p',{role:'status'},t('waiting')):h('dl',null,...rows.flatMap(([label,text])=>[h('dt',{key:label},label),h('dd',{key:label+'-value'},text)])),
+        h('button',{className:'jlc-sidebar-action',type:'button',onClick:read},t('refresh')),
+        h('p',{className:'jlc-sidebar-engine'},t('engine'),' · DSH 0.2.1-rc.2'));
+    }
+    for(const [name,Component] of [['sidebar.brand.mark',Mark],['sidebar.brand.name',Brand],['conversation.hero.brand.mark',Mark],['settings.launcher',Settings]])
+      ctx.slots.inject(name,()=>ctx.slots.register({name,locale:'jlceda.sidebar'},Component));
+    ctx.slots.inject('settings.section',()=>ctx.slots.register({name:'settings.section',id:'jlceda-diagnostics',order:90,label:()=>ctx.locale.bind('jlceda.sidebar')('diagnostics'),locale:'jlceda.sidebar'},Diagnostics));
+    const subscribeSessions=listener=>ctx.sessions.list.subscribe(listener);
+    function Binding({sessionId}){
+      const project=React.useSyncExternalStore(controller.source.subscribe,controller.source.getSnapshot);
+      const cwd=React.useSyncExternalStore(subscribeSessions,()=>ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd||'');
+      const [state,setState]=React.useState(null),[error,setError]=React.useState(''),[busy,setBusy]=React.useState(false);
+      const [mcp,setMcp]=React.useState(null);
+      React.useEffect(()=>{
+        let alive=true,pending=false;
+        const refresh=async()=>{if(pending)return;pending=true;try{const health=await window.jlcEDAContext.health();if(alive)setMcp(health);}catch{if(alive)setMcp({phase:'disconnected',bridgeHealthy:false,error:{message:'连接状态暂不可用'}});}finally{pending=false;}};
+        const release=window.jlcEDAContext.onHealth(value=>{if(alive)setMcp(value);});
+        refresh();const timer=setInterval(refresh,2500);return()=>{alive=false;clearInterval(timer);release();};
+      },[]);
+      React.useEffect(()=>{
+        let alive=true,pending=false;setState(null);setError('');
+        const refresh=async()=>{if(pending||!sessionId)return;pending=true;try{
+          const value=await window.jlcEDAContext.select(sessionId);if(alive){setState(value);setError('');}
+        }catch(e){if(alive)setError(e.message)}finally{pending=false;}};
+        refresh();const timer=setInterval(refresh,2000);return()=>{alive=false;clearInterval(timer)};
+      },[sessionId]);
+      const current=state?.target;
+      const wrongWorkspace=!!current?.workspaceDirectory&&canonical(cwd)!==canonical(current.workspaceDirectory);
+      const mode=error||project.error?'error':project.syncing?'syncing':wrongWorkspace||state?.state==='stale'?'stale':state?'bound':'loading';
+      const reasons={PROJECT_CHANGED:'此对话属于其他工程',OTHER_WINDOW:'此对话正在另一个 EDA 窗口中使用'};
+      const label=error||project.error?'工程上下文暂不可用':project.syncing?'正在切换工程工作区…':wrongWorkspace?'会话工作区与当前工程不一致':!state?'正在确认 EDA 工程…':state.state==='bound'?`${current.projectName||'未打开工程'} · ${current.documentName||current.documentId||'工程首页'}`:reasons[state.reason]||'工程连接需要更新';
+      const directory=current?.workspaceDirectory;
+      const connected=mcp?.phase==='connected'&&mcp.bridgeHealthy===true;
+      const mcpLabel=connected?`MCP 已连接 · EDA ${mcp.bridgeVersion||mcp.serverVersion||''}`:!mcp||['idle','starting','handshaking','reconnecting'].includes(mcp.phase)?'MCP 正在连接…':'MCP 未连接 · EDA 调用已暂停';
+      const mcpDetail=mcp?`传输：${mcp.phase}；Bridge：${mcp.bridgeHealthy?'可用':'不可用'}；最近检查：${mcp.checkedAt||'尚未完成'}${mcp.error?`；${mcp.error.code||''} ${mcp.error.message||''}`:''}`:'等待真实 MCP 健康检查';
+      async function act(){setBusy(true);try{
+        if(state?.reason==='OTHER_WINDOW')await controller.openCurrent(true);
+        else if(wrongWorkspace||project.error||state?.reason==='PROJECT_CHANGED')await controller.openCurrent();
+        else await controller.openCurrent(true);
+        setError('');
+      }catch(e){setError(e.message)}finally{setBusy(false)}}
+      return h('section',{className:'jlc-eda-binding','data-jlc-binding':mode,'data-jlc-conversation':sessionId,'data-jlc-project':current?.projectId||'','data-jlc-document':current?.documentTabId||'','aria-label':'EDA 工程上下文'},
+        h('div',{className:'jlc-eda-binding__copy'},
+          h('div',{className:'jlc-eda-binding__line'},h('span',{className:'jlc-eda-binding__dot','aria-hidden':true}),h('span',{className:'jlc-eda-binding__label',role:'status','aria-live':'polite',title:error||project.error||label},label)),
+          h('div',{className:'jlc-eda-binding__directory','data-jlc-workspace':directory||'',title:directory||''},directory?`工作目录 · ${directory}`:'未找到本地工程目录'),
+          h('div',{className:'jlc-eda-binding__mcp','data-jlc-mcp':connected?'connected':mcp?.phase||'loading',role:'status',title:mcpDetail},mcpLabel)),
+        (mode==='stale'||mode==='error')&&h('button',{className:'jlc-eda-binding__button',type:'button',onClick:act,disabled:busy||project.syncing},busy?'处理中…':state?.reason==='OTHER_WINDOW'?'在此窗口新建会话':wrongWorkspace||project.error||state?.reason==='PROJECT_CHANGED'?'切换到工程对话':'新建当前工程会话'));
+    }
+    if(window.jlcEDAContext?.debug)window.__JLC_DSH_CONTEXT_TEST__={
+      create:()=>controller.openCurrent(true),open:id=>ctx.uiWorkspace.openSession(id),project:controller.source.getSnapshot,
+      ui:()=>({panels:ctx.slots.entries('sidebar.panellist').map(e=>e.options.id),settings:ctx.slots.entries('settings.section').map(e=>e.options.id),onboarding:ctx.slots.entries('settings.onboarding').map(e=>e.options.id),commands:ctx.get('shortcuts').catalog.getSnapshot().map(e=>e.id),workspaces:ctx.workspaces.list.getSnapshot().items.map(w=>({id:w.workspaceId,path:w.path,sessionIds:w.sessionIds})),sessions:Object.fromEntries(Object.entries(ctx.sessions.list.getSnapshot().byId).map(([id,s])=>[id,{id,cwd:s.cwd,title:s.displayTitle,blank:s.blank}]))}),
+      newFromNavigation:()=>ctx.uiWorkspace.startSession(),
+      toggleNavigation:()=>ctx.get('layout').toggleSidebar(),
+      openGuidePreview:()=>ctx.get('sidebarRight').openTab('guide'),
+      closeGuidePreview:()=>ctx.get('sidebarRight').toggleExpanded(),
+      async forgetFixtureWorkspace(){
+        const rows=ctx.workspaces.list.getSnapshot().items.filter(row=>canonical(row.path).endsWith('/lab/workspace-switch-fixture/project-b'));
+        for(const row of rows)await ctx.workspaces.delete(row.workspaceId);
+        return rows.length;
+      },
+    };
+    ctx.slots.inject('conversation.input.dock',()=>ctx.slots.register({name:'conversation.input.dock',id:'jlc-eda-binding',order:-100},Binding));
+  }};
+}});

@@ -1,0 +1,63 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path');
+const traverse=require('../.tools/node_modules/@babel/traverse').default;
+const {parse,one,replaceOnce,applyEdits,declarations}=require('./client-analysis.cjs');
+const id='[\\w$]+';
+function adaptSidebar(source){
+  const ast=parse(source),rows=declarations(source,ast),functions=rows.filter(r=>r.kind==='function');
+  const value=r=>r.node.init||r.node.right;
+  const choose=(predicate,label)=>one(rows.filter(predicate),label);
+  const fn=(predicate,label)=>one(functions.filter(r=>r.code.length<50000&&predicate(r.code)),label);
+  const panelSet=choose(r=>value(r)?.type==='NewExpression'&&value(r).callee.name==='Set'&&r.code.includes('"multi-attr"')&&r.code.includes('"autoRouter"'),'right panel tab set');
+  const tabs=choose(r=>value(r)?.type==='ArrayExpression'&&r.code.includes('tabId:"multi-attr"')&&r.code.includes('tabId:"multi-filter"'),'right panel default tabs');
+  const registry=fn(s=>s.includes('project_list:{children:')&&s.includes('schDrcImportLog:{children:'),'component registry');
+  const merger=fn(s=>s.includes('.tabIndex.filter(')&&s.includes('.getTabData(')&&s.includes('Object.keys(')&&s.includes('.dock['),'dock tab merge');
+  const controller=choose(r=>value(r)?.type==='NewExpression'&&r.code.includes('this.id="right-panel-tab-container"')&&r.code.includes('_clickedTabId'),'right panel controller');
+  const layout=fn(s=>s.includes('leftTreeSelectedNodeBelongDOCTYPE')&&s.includes('isResize:')&&s.includes('#layoutRight'),'layout update');
+  const divider=fn(s=>s.includes('layout_toggler_right')&&s.includes('hasClass("close")')&&s.includes('#layoutRight #sch-attr'),'right divider');
+  const getter=fn(s=>s.includes('sessionStorage.getItem("layout")')&&s.includes('Object.hasOwnProperty.call'),'layout getter');
+  const setter=fn(s=>s.includes('"setSchLayoutCache"')&&s.includes('"syncGlobalData"'),'layout setter');
+  const mount=fn(s=>s.includes('.shouldHide')&&s.includes('.createRoot(')&&s.includes('schDrcImportLog'),'component mount');
+  const open=fn(s=>s.includes('Failed to open project, {msg}')&&s.includes('project is opening!'),'project open');
+  const symbols={qr:controller.name,Q3:layout.name,ps:divider.name,Zu:getter.name,v2:setter.name,Nwe:mount.name,Ed:open.name};
+  const capture=(s,re,label)=>{const m=s.match(re);if(!m)throw Error('Unsupported client structure: '+label);return m[1];};
+  symbols.A=capture(layout.code,new RegExp(`(${id})\\.messageBus\\.rpcCall\\("leftTreeSelectedNodeBelongDOCTYPE"`),'editor state');
+  symbols.me=capture(layout.code,new RegExp(`(${id})\\.getActiveTab\\(\\)=="0"`),'active editor tabs');
+  symbols.Et=capture(merger.code,new RegExp(`(${id})\\.getTabData\\(`),'tab layout service');
+  symbols.PE=capture(open.code,new RegExp(`(${id})\\.getInstance\\(\\)`),'project registry');
+  symbols.CKe=capture(mount.code,new RegExp(`\\(0,(${id})\\.jsx\\)`),'React JSX module');
+  const reactFactory=one(rows.filter(r=>r.code.length<30000&&r.code.includes('.useSyncExternalStore=function')&&r.code.includes('.useState=function')),'React hook implementation');
+  symbols.Te=one(rows.filter(r=>r.code.length<220&&r.code.includes('.exports='+reactFactory.name+'()')),'React module factory').name;
+  const edits=[],edit=(row,transform,label)=>edits.push({start:row.node.start,end:row.node.end,code:transform(row.code),label});
+  edit(panelSet,s=>replaceOnce(s,'new Set([','new Set(["jlc-dsh",','panel tab registration'),'panel set');
+  edit(tabs,s=>replaceOnce(s,`${tabs.name}=[`,`${tabs.name}=[{tabId:"jlc-dsh",title:"Agent",draggable:!1,isAbleDelete:!1},`,'default tab registration'),'default tabs');
+  const registryObject=capture(registry.code,new RegExp(`(${id})=\\{project_list:`),'registry object');
+  edit(registry,s=>replaceOnce(s,`${registryObject}={`,`${registryObject}={"jlc-dsh":{children:JlcDshPlaceholder},`,'component registration'),'component registry');
+  const args=merger.node.params.map(p=>p.name);if(args.length!==3||args.some(p=>!p))throw Error('Unsupported dock merge parameters');
+  edit(merger,s=>s.replace(`function ${merger.name}(`,'function JlcDshOriginalMerge(')+`;function ${merger.name}(${args.join(',')}){return JlcDshMergeTabs(JlcDshOriginalMerge(${args.join(',')}),${args[1]})}`,'dock merge');
+  edit(controller,s=>{
+    const active=s.match(new RegExp(`getActiveByMode:(${id})=>\\{switch\\(\\1\\)`));if(!active)throw Error('Unsupported active panel selector');
+    s=replaceOnce(s,active[0],`getActiveByMode:${active[1]}=>{if(JlcDshIsSelected())return"jlc-dsh";switch(${active[1]})`,'active panel selector');
+    const click=s.match(new RegExp(`handleClick\\((${id}),(${id}),(${id})\\)\\{`));if(!click)throw Error('Unsupported tab click method');
+    return replaceOnce(s,click[0],`${click[0]}if(JlcDshIsSelected()&&${click[1]}!=="jlc-dsh"&&!${click[2]}&&!${click[3]})return;JlcDshSelection(${click[1]});`,'tab click');
+  },'panel selection');
+  edit(layout,s=>{
+    const fold=s.match(new RegExp(`let (${id})=(${id})&&!(${id})\\|\\|!(${id})\\.right\\.open`));if(!fold)throw Error('Unsupported home folding expression');
+    s=replaceOnce(s,fold[0],`let ${fold[1]}=${fold[2]}&&!${fold[3]}&&!JlcDshIsSelected()||!${fold[4]}.right.open`,'home folding');
+    const vars=[];traverse(parse(layout.code),{VariableDeclarator(p){if(p.node.init?.type==='CallExpression'&&p.node.init.arguments[0]?.value==='#layout_toggler_right')vars.push(p.node.id.name);}});
+    const right=one(vars,'right divider DOM binding'),close=s.match(new RegExp(`(${id})\\|\\|${right}\\.removeClass\\("close"\\)`));if(!close)throw Error('Unsupported home divider expression');
+    return replaceOnce(s,close[0],`(!${close[1]}||JlcDshIsSelected())&&${right}.removeClass("close")`,'home divider');
+  },'home layout');
+  const dp=divider.node.params[0]?.name;if(!dp)throw Error('Unsupported divider parameter');
+  edit(divider,s=>{const at=divider.node.body.start-divider.node.start+1;return s.slice(0,at)+`if(${dp}==="layout_toggler_right"&&JlcDshIsSelected()&&Number(${symbols.Et}.containerInfo[${controller.name}.id]?.currentMode)<=0)${divider.node.params[3].name}="blank";`+s.slice(at);},'home divider readiness');
+  source=applyEdits(source,edits);
+  const ready='console.log("[OPEN PROJECT] Start check");';
+  source=replaceOnce(source,ready,'JlcDshWatchProjectReady(this.uuid);'+ready,'project AST readiness subscription');
+  let renderer=fs.readFileSync(path.join(__dirname,'../host/renderer-host.js'),'utf8');
+  const renames=[];traverse(parse(renderer),{ReferencedIdentifier(p){const name=p.node.name;if(symbols[name]&&!p.scope.hasBinding(name))renames.push({start:p.node.start,end:p.node.end,code:symbols[name],label:name});}});
+  renderer=applyEdits(renderer,renames);
+  if(!source.startsWith('(()=>{'))throw Error('Unsupported UI bundle wrapper');
+  return {source:'(()=>{\n'+renderer+'\n'+source.slice(6),symbols,features:edits.map(e=>e.label).concat('project AST readiness')};
+}
+function patchSidebar(source){return adaptSidebar(source).source;}
+module.exports=patchSidebar;module.exports.patchSidebar=patchSidebar;module.exports.adaptSidebar=adaptSidebar;
