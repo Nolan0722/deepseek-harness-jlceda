@@ -89,6 +89,7 @@ function start() {
   delete env.ELECTRON_RUN_AS_NODE;
   // The independent profile owns model credentials; no ambient API keys are imported.
   for (const key of Object.keys(env)) if (/KEY|PASSWORD|SECRET|TOKEN/i.test(key)) delete env[key];
+  env.JLC_FRAME_ANCESTORS=frameAncestors();
   publish({ phase: 'starting', message: '正在启动 JLCEDA Agent…' });
   startPromise = Promise.all([certificateReady,contextHost.start()]).then(()=>new Promise((resolve, reject) => {
     dshNetwork=createDshNetwork({certificate:fs.readFileSync(tls.certFile),session:session.defaultSession,getOrigin:()=>authenticatedURL?new URL(authenticatedURL).origin:null});
@@ -127,10 +128,32 @@ function start() {
   }));
   return startPromise;
 }
+function configuredOnlineOrigin(){
+  try{
+    const service=JSON.parse(fs.readFileSync(path.join(profile,'documents','LCEDA-Pro','config.json'),'utf8')).onlineService;
+    const url=new URL(service);
+    if(url.protocol!=='https:'||url.pathname!=='/'||url.search||url.hash)return null;
+    if(!/^(?:[a-z0-9-]+\.)*(?:lceda\.cn|easyeda\.com)$/.test(url.hostname))return null;
+    return url.origin;
+  }catch{return null;}
+}
+function editorDocument(value){
+  let address;try{address=new URL(value);}catch{return false;}
+  if(!/^\/editor(?:\/\d+\.\d+\.\d+(?:\.\d+)?)?\/?$/.test(address.pathname))return false;
+  return address.origin==='https://client'||address.origin===configuredOnlineOrigin();
+}
+function frameAncestors(){
+  const origins=new Set(['https://client']),online=configuredOnlineOrigin();
+  for(const {win} of views.values()){
+    if(win.isDestroyed())continue;
+    try{const origin=new URL(win.webContents.getURL()).origin;if(origin===online)origins.add(origin);}catch{}
+  }
+  return [...origins].join(' ');
+}
 function trusted(event) {
   if (event.sender.isDestroyed() || event.senderFrame !== event.sender.mainFrame) return null;
-  const address=new URL(event.sender.getURL());
-  if(address.origin!=='https://client'||address.pathname!=='/editor')return null;
+  let address;try{address=new URL(event.sender.getURL());}catch{return null;}
+  if(!editorDocument(address.href))return null;
   const win = BrowserWindow.fromWebContents(event.sender);
   return win && !win.isDestroyed() ? win : null;
 }
@@ -158,7 +181,17 @@ function waitEvent(emitter,event){
 }
 ipcMain.handle('jlc-dsh:bootstrap', async event => {
   const win = trusted(event);
-  if(!win||closing)throw Error('Invalid sidebar sender');
+  if(!win||closing){
+    let where='unavailable';
+    try{if(!event.sender.isDestroyed()){const address=new URL(event.sender.getURL());where=`${address.origin}${address.pathname}`;}}catch{}
+    log(`rejected sidebar sender closing=${!!closing} url=${where}`);
+    throw Error('Invalid sidebar sender');
+  }
+  const page=new URL(win.webContents.getURL());
+  if(page.origin!=='https://client'){
+    log(`DSH not started; editor is online ${page.origin}${page.pathname}`);
+    throw Error('ONLINE_MODE');
+  }
   const entry = ensure(win);
   entry.frameReady=false;
   const url=await start();

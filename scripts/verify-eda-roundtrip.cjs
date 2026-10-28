@@ -83,7 +83,7 @@ const readOne=id=>`const c=await eda.sch_PrimitiveComponent.get(${JSON.stringify
   step('native-REQUEST_TIMEOUT-is-unknown-and-followed-by-independent-readback',{callId:timeoutId,recoveryCall:recovered.call});
   report.stage='health-UI';
   await waitFor(()=>evaluate(guest,'document.querySelector("[data-jlc-mcp]")?.getAttribute("data-jlc-mcp")==="connected"'));
-  const healthLabel=await evaluate(guest,'document.querySelector("[data-jlc-mcp]").innerText');assert.match(healthLabel,/MCP 已连接/);
+  const healthLabel=await evaluate(guest,'document.querySelector("[data-jlc-mcp]").textContent');assert.match(healthLabel,/MCP 已连接/);
   step('UI-displays-actual-MCP-and-EDA-version',{label:healthLabel});
   report.stage='real-transport-loss';
   const before=hostState();assert.equal(before.execPath,path.join(root,'lab/client/lceda-pro.exe'));assert.equal(before.mcp.endpoint,before.endpoint);assert.ok(before.mcp.pid&&before.mcp.pid!==owner);

@@ -16,9 +16,8 @@ async function controls(){return evaluate(frame,'({expand:document.querySelector
   await evaluate(frame,'window.__JLC_DSH_CONTEXT_TEST__.create()');await waitFor(()=>evaluate(frame,'document.querySelector("[data-jlc-binding]")?.dataset.jlcBinding==="bound"'));
   const missing=await controls();assert.deepEqual(missing,{expand:0,collapse:0,toggleCommand:false});step('generic-right-sidebar-controls-and-shortcut-removed',missing);
   const gear=await evaluate(frame,'(()=>{const b=document.querySelector("[data-jlc-settings]");return {label:b.getAttribute("aria-label"),kind:b.dataset.jlcSettingsIcon,viewBox:b.querySelector("svg")?.getAttribute("viewBox"),paths:b.querySelectorAll("svg path").length,rectangles:b.querySelectorAll("svg rect").length};})()');assert.equal(gear.label,'设置');assert.equal(gear.kind,'gear');assert.equal(gear.viewBox,'0 0 16 16');assert.ok(gear.paths>=2);assert.equal(gear.rectangles,0);step('settings-use-native-gear-artwork-and-settings-label',gear);
-  await setFrameViewport(editor,720,820);await delay(250);await evaluate(frame,'(()=>{if(document.querySelector("button[aria-label=打开侧边栏]"))window.__JLC_DSH_CONTEXT_TEST__.toggleNavigation();})()');
-  await waitFor(()=>evaluate(frame,'document.querySelector("[data-jlc-brand]")?.textContent==="JLCEDA Agent"'));assert.ok(await evaluate(frame,'document.body.innerText.match(/JLCEDA Agent/g)?.length>=2'));step('sidebar-and-conversation-name-are-JLCEDA-Agent');
-  await evaluate(frame,'window.__JLC_DSH_CONTEXT_TEST__.toggleNavigation()');await delay(250);
+  await setFrameViewport(editor,720,820);await delay(250);
+  await waitFor(()=>evaluate(frame,'document.querySelector("[data-jlc-brand]")?.textContent==="JLCEDA Agent"&&document.querySelector("[data-jlc-more]")?.checkVisibility()'));assert.ok(await evaluate(frame,'document.body.innerText.includes("JLCEDA Agent")'));assert.equal(await evaluate(frame,'document.querySelector("button[aria-label=打开侧边栏]")?.checkVisibility()??false'),false);step('sidebar-hidden-and-conversation-name-remains-JLCEDA-Agent');
   wasDark=await evaluate(frame,'document.body.hasAttribute("data-ds-dark-theme")');
   for(const dark of [false,true]){
     await evaluate(frame,`document.body.toggleAttribute("data-ds-dark-theme",${dark})`);

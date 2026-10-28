@@ -11,6 +11,19 @@ function JlcDshSubscribeStatus(listener) {
   return () => jlcDshStatusListeners.delete(listener);
 }
 function JlcDshStatusSnapshot() { return jlcDshState.status; }
+function JlcDshEdaMode(){
+  let raw='';
+  try{raw=typeof PRO_EDITOR_MODE==='string'?PRO_EDITOR_MODE:typeof window.PRO_EDITOR_MODE==='string'?window.PRO_EDITOR_MODE:'';}catch{}
+  const parts=String(raw).split('-');
+  if(parts.includes('ONLINE'))return 'ONLINE';
+  if(parts.includes('HALF_OFFLINE'))return 'HALF_OFFLINE';
+  if(parts.includes('OFFLINE'))return 'OFFLINE';
+  try{if(location.origin==='https://client')return 'LOCAL';}catch{}
+  try{if(location.protocol==='https:'&&/(^|\.)(lceda\.cn|easyeda\.com)$/.test(location.hostname))return 'ONLINE';}catch{}
+  return 'LOCAL';
+}
+function JlcDshOnlineBlocked(){return JlcDshEdaMode()==='ONLINE';}
+function JlcDshOnlineMessage(){return '当前是在线模式，JLCEDA Agent 未启动。请切换到半离线模式（工程离线模式）或全离线模式（完全离线模式）后再使用。';}
 function JlcDshWatchProjectReady(projectId) {
   jlcDshState.projectReadyId = null;
   jlcDshProjectReadySubscription?.cancel();
@@ -46,6 +59,7 @@ window.addEventListener('message',JlcDshOnFrameMessage);
 async function JlcDshLoadFrame() {
   const frame=jlcDshFrame,generation=++jlcDshState.generation;
   if(!frame)return;
+  if(JlcDshOnlineBlocked()){JlcDshUpdateStatus({phase:'mode',message:JlcDshOnlineMessage()});return;}
   try{
     const {url}=await window.jlcDSH.bootstrap();
     if(frame!==jlcDshFrame||generation!==jlcDshState.generation)return;
@@ -54,6 +68,7 @@ async function JlcDshLoadFrame() {
     jlcDshOrigin=address.origin;
     frame.src=url;
   }catch(error){
+    if(JlcDshOnlineBlocked()||String(error&&error.message||error).includes('ONLINE_MODE')){JlcDshUpdateStatus({phase:'mode',message:JlcDshOnlineMessage()});return;}
     jlcDshState.error=String(error.message||error);
     JlcDshUpdateStatus({phase:'error',message:'DSH 页面启动失败：'+jlcDshState.error});
   }
@@ -65,18 +80,20 @@ function JlcDshAttachFrame(frame) {
 }
 function JlcDshPlaceholder() {
   const status=Te().useSyncExternalStore(JlcDshSubscribeStatus,JlcDshStatusSnapshot);
+  const blocked=status.phase==='mode';
   return (0,CKe.jsx)('div',{id:'jlc-dsh-slot',style:{width:'100%',height:'100%',minHeight:0,display:'flex',flexDirection:'column',background:'#fff',overflow:'hidden',position:'relative',isolation:'isolate'},children:[
-    (0,CKe.jsx)('div',{id:'jlc-dsh-startup',style:{padding:'16px',color:'#777',fontSize:'13px',flex:'none',display:status.phase==='ready'?'none':''},children:[
+    (0,CKe.jsx)('div',{id:'jlc-dsh-startup',style:{padding:blocked?'28px 22px':'16px',color:blocked?'#252a32':'#777',fontSize:blocked?'14px':'13px',lineHeight:'22px',flex:blocked?'1 1 auto':'none',display:status.phase==='ready'?'none':''},children:[
       (0,CKe.jsx)('div',{id:'jlc-dsh-status',role:'status',children:status.message},'message'),
       (0,CKe.jsx)('button',{id:'jlc-dsh-retry',type:'button',hidden:!['error','stopped'].includes(status.phase),onClick:JlcDshLoadFrame,children:'重试'},'retry')
     ]},'startup'),
-    (0,CKe.jsx)('iframe',{id:'jlc-dsh-frame',title:'JLCEDA Agent',sandbox:'allow-scripts allow-same-origin allow-forms allow-downloads',allow:'clipboard-read; clipboard-write',referrerPolicy:'no-referrer',style:{display:'block',border:0,width:'100%',flex:'1 1 0',minHeight:0},ref:JlcDshAttachFrame},'frame')
+    (0,CKe.jsx)('iframe',{id:'jlc-dsh-frame',title:'JLCEDA Agent',sandbox:'allow-scripts allow-same-origin allow-forms allow-downloads',allow:'clipboard-read; clipboard-write',referrerPolicy:'no-referrer',style:{display:blocked?'none':'block',border:0,width:'100%',flex:'1 1 0',minHeight:0},ref:JlcDshAttachFrame},'frame')
   ]});
 }
 function JlcDshIsSelected() { return !!window.jlcDSH&&jlcDshState.selected; }
 function JlcDshSelection(tabId) { jlcDshState.selected=tabId==='jlc-dsh'; }
 function JlcDshUpdateStatus(status) {
   if(!status||typeof status.phase!=='string'||typeof status.message!=='string')return;
+  if(JlcDshOnlineBlocked()&&status.phase!=='mode')return;
   jlcDshState.status={phase:status.phase,message:status.message};
   for(const listener of jlcDshStatusListeners)listener();
 }
@@ -94,12 +111,16 @@ async function JlcDshInitialize() {
   if(!window.jlcDSH||typeof qr==='undefined'||typeof Et==='undefined'||!Et.containerInfo?.['right-panel-tab-container']||!document.getElementById('layout-right-tab-body')){
     jlcDshState.startupTimer=setTimeout(JlcDshInitialize,100);return;
   }
+  const online=JlcDshOnlineBlocked();
+  if(online)jlcDshState.status={phase:'mode',message:JlcDshOnlineMessage()};
   jlcDshState.initialized=true;
   try{
     jlcDshState.error=null;
-    jlcDshUnsubscribeStatus=window.jlcDSH.onStatus(JlcDshUpdateStatus);
-    jlcDshUnsubscribeHealth=window.jlcDSH.onHealth(value=>JlcDshPost({type:'health',value}));
-    window.jlcDSH.status().then(JlcDshUpdateStatus).catch(error=>{jlcDshState.error=String(error);});
+    if(!online){
+      jlcDshUnsubscribeStatus=window.jlcDSH.onStatus(JlcDshUpdateStatus);
+      jlcDshUnsubscribeHealth=window.jlcDSH.onHealth(value=>JlcDshPost({type:'health',value}));
+      window.jlcDSH.status().then(JlcDshUpdateStatus).catch(error=>{jlcDshState.error=String(error);});
+    }
     document.body.classList.add('jlc-dsh-enabled');
     const style=document.createElement('style');style.id='jlc-dsh-host-style';
     style.textContent='body.none-docs.jlc-dsh-enabled #layoutRight,body.none-docs.jlc-dsh-enabled #layout_toggler_right{display:block!important}#jlc-dsh{height:100%;width:100%;min-height:0;overflow:hidden}#jlc-dsh-slot{box-sizing:border-box}';

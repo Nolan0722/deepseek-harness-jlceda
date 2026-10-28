@@ -25,7 +25,7 @@ async function clickFrame(selector){await evaluate(frame,`(()=>{const e=document
   await waitFor(()=>evaluate(frame,'!!window.__JLC_DSH_CONTEXT_TEST__'));
   const initial=await waitFor(async()=>{const ui=await evaluate(frame,'window.__JLC_DSH_CONTEXT_TEST__.ui()');return ui.workspaces.length>0&&Object.keys(ui.sessions).length>0&&ui;});
   assert.deepEqual(initial.panels,[]);assert.deepEqual([...initial.settings].sort(),['agent-presets','general','jlceda-diagnostics','models','plugin-manager','plugins','schedules']);assert.deepEqual(initial.onboarding,['deepseek-official']);
-  assert.ok(initial.commands.includes('workspace.add'));assert.ok(!initial.commands.some(c=>/plugin|schedule|terminal|browser/.test(c)));assert.ok(initial.commands.includes('session.new'));
+  assert.ok(!initial.commands.includes('workspace.add'));assert.ok(!initial.commands.some(c=>/plugin|schedule|terminal|browser/.test(c)));assert.ok(initial.commands.includes('session.new'));
   step('unrelated-panels-settings-and-commands-not-registered',{panels:initial.panels,settings:initial.settings,commands:initial.commands,onboarding:initial.onboarding});
   assert.ok(initial.workspaces.length>0);assert.ok(initial.workspaces.some(w=>w.sessionIds.length>0));
   const historicIds=Object.keys(initial.sessions);step('existing-engineering-workspaces-and-session-history-retained',{workspaceCount:initial.workspaces.length,sessionCount:historicIds.length});
@@ -40,8 +40,8 @@ async function clickFrame(selector){await evaluate(frame,`(()=>{const e=document
   step('eprj3-opens-with-bound-project-directory',{projectId:first.projectId,conversationId:first.conversationId});
   assert.equal(await evaluate(frame,'document.querySelector("[data-jlc-project-workspace]")?.tagName'),'SPAN');
   assert.equal(await evaluate(frame,'!!document.querySelector("button[aria-label=选择工作区]")'),false);
-  assert.equal(await evaluate(frame,'!!document.querySelector("button[aria-label=添加工作区]")'),true);
-  step('bound-workspace-chip-read-only-and-add-workspace-management-retained');
+  assert.equal(await evaluate(frame,'!!document.querySelector("button[aria-label=添加工作区]")'),false);
+  step('bound-workspace-chip-read-only-and-add-workspace-removed');
   report.stage='new session';
   await clickFrame('button[aria-label=新建会话]');
   const fresh=await waitFor(async()=>{const s=await state();return s.binding==='bound'&&s.conversationId!==first.conversationId&&s;});
@@ -97,11 +97,13 @@ async function clickFrame(selector){await evaluate(frame,`(()=>{const e=document
   }
   await clearFrameViewport(editor);
   await setFrameViewport(editor,720,820);await waitFor(()=>evaluate(frame,'innerWidth===720'));await delay(350);
-  await evaluate(frame,'(()=>{if(document.querySelector("button[aria-label=打开侧边栏]"))window.__JLC_DSH_CONTEXT_TEST__.toggleNavigation();})()');
-  const history=await waitFor(()=>evaluate(frame,'(()=>{const b=document.querySelector("button[aria-label=收起侧边栏]");return b?{expanded:true,workspaceVisible:document.body.innerText.includes("工作区"),sessionVisible:document.body.innerText.includes("新会话"),settingsVisible:document.querySelector("[data-jlc-settings]")?.checkVisibility()}:null;})()'));
-  assert.ok(history.expanded);assert.ok(history.workspaceVisible&&history.sessionVisible&&history.settingsVisible);
+  assert.equal(await evaluate(frame,'document.querySelector("button[aria-label=打开侧边栏]")?.checkVisibility()??false'),false);
+  await waitFor(()=>evaluate(frame,'!document.querySelector(".pI_x6G_frame")?.hasAttribute("data-sidebar-collapsed")'));
+  await clickFrame('[data-jlc-more]');
+  const history=await waitFor(()=>evaluate(frame,'(()=>{const menu=document.querySelector(".pI_x6G_sidebarCol");const box=menu?.getBoundingClientRect();const rows=[...document.querySelectorAll(".YDXeBa_sessionRow,.YDXeBa_projectRow")];const open=document.documentElement.dataset.jlcMore==="open"&&box&&box.height>40&&getComputedStyle(menu).display!=="none";return open?{expanded:true,cards:rows.length,sessionVisible:rows.some(row=>row.classList.contains("YDXeBa_sessionRow")),workspaceVisible:rows.some(row=>row.classList.contains("YDXeBa_projectRow"))||document.body.innerText.includes("工作区"),settingsVisible:document.querySelector("[data-jlc-settings]")?.checkVisibility(),addVisible:!!document.querySelector("button[aria-label=添加工作区]"),dock:!!document.querySelector(".jlc-eda-binding")?.closest("[data-composer-card],._7yHdaG_dock")}:null;})()'));
+  assert.ok(history.expanded);assert.ok(history.workspaceVisible&&history.sessionVisible&&history.settingsVisible);assert.equal(history.addVisible,false);assert.equal(history.dock,false);
   const historyImage=await captureFrame(editor);fs.writeFileSync(path.join(root,'evidence/sidebar-profile-history-720.png'),Buffer.from(historyImage.data,'base64'));
-  await evaluate(frame,'window.__JLC_DSH_CONTEXT_TEST__.toggleNavigation()');await delay(350);await clearFrameViewport(editor);
+  await clickFrame('[data-jlc-more]');await waitFor(()=>evaluate(frame,'document.documentElement.dataset.jlcMore!=="open"'));await clearFrameViewport(editor);
   step('engineering-workspace-history-expands-and-collapses-without-leaving-conversation',history);
   step('model-configuration-remains-reachable-at-all-tested-widths');
   report.passed=true;

@@ -25,6 +25,14 @@ const specs=[
 `);
     // Register a directory without changing the currently bound conversation.
     s=replace(s,'startSession(workspaceId, { clearPreviousDraft: false });','// Project conversations are selected only by the EDA project controller.');
+    // The EDA project controller creates the workspace. Manual add stays unreachable.
+    s=replace(s,'add: () => {\n\t\t\t\t\tstate.set(state.getSnapshot().directoryBusy ? state.getSnapshot() : {\n\t\t\t\t\t\t...state.getSnapshot(),\n\t\t\t\t\t\taddRequested: true\n\t\t\t\t\t});\n\t\t\t\t},','add: () => {},');
+    s=replace(s,'register("workspace.add", () => t("workspace.add"), ["add workspace", "open folder"], "KeyO", ["primary"], ["primary", "alt"], () => {\n\t\t\t\tconst reason = addReason();\n\t\t\t\treturn reason === null ? {\n\t\t\t\t\tstatus: "handled",\n\t\t\t\t\trun: controls.add\n\t\t\t\t} : {\n\t\t\t\t\tstatus: "blocked",\n\t\t\t\t\treason\n\t\t\t\t};\n\t\t\t});\n','');
+    s=replace(s,'const addEntries = flowAvailable ? [{\n\t\t\t\tid: ADD_WORKSPACE,\n\t\t\t\tlabel: t("menu.addWorkspace"),\n\t\t\t\ticon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 16 }),\n\t\t\t\tdisabled: flowBusy\n\t\t\t}] : [];','const addEntries = [];');
+    const buttonAt=s.indexOf(', directoryFlowAvailable && (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {');
+    const buttonUntil=buttonAt<0?-1:s.indexOf(']\n',buttonAt);
+    if(buttonAt<0||buttonUntil<0||s.includes(', directoryFlowAvailable &&',buttonAt+1))throw Error('Unsupported add-workspace button');
+    s=s.slice(0,buttonAt)+s.slice(buttonUntil);
     return s;
   }],
   ['ui-conversation','8554738cbeeb5218ad1bfa4773ef094363b066d052a1893d7a96797c5bc33a63',s=>{
@@ -83,7 +91,7 @@ const specs=[
             if (id === "schedules") return (0,react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconClockOutlineRegular,{className:SettingsRoot_module_css_default.navIcon,size:16});`);
     const responsive=`.VOzbGW_panel{width:1180px;height:min(920px,calc(100dvh - 32px));max-width:calc(100vw - 32px)}.VOzbGW_content{min-height:0}.VOzbGW_options{padding:0 16px 16px}@media(max-width:600px){.VOzbGW_panel{flex-direction:column;max-width:calc(100vw - 24px);height:calc(100dvh - 24px)}.VOzbGW_nav{width:100%;padding:14px 12px 0;gap:12px}.VOzbGW_navTitle{min-height:28px;padding:0 4px}.VOzbGW_navList{flex-direction:row;flex-wrap:wrap;overflow:visible;gap:4px}.VOzbGW_navCell{flex:none;height:36px;padding:7px 10px;gap:6px}.VOzbGW_navLabel{flex:none}.VOzbGW_header{position:absolute;right:12px;top:14px;height:28px;padding:0}.VOzbGW_options{padding:12px}}`;
     s=replace(s,'tag.textContent = css$7;','tag.textContent = css$7 + '+JSON.stringify(responsive)+';');
-    s=replace(s,'const disposeCommand = ctx.shortcuts.register({','const disposeSettingsNavigation = ctx.reflect.provide("jlcSettingsNavigation", {openSection: id => shellInstance.actions.openSection(id),close:()=>shellInstance.actions.close()});\n\t\t\t\tconst disposeCommand = ctx.shortcuts.register({');
+    s=replace(s,'const disposeCommand = ctx.shortcuts.register({','const disposeSettingsNavigation = ctx.reflect.provide("jlcSettingsNavigation", {open:()=>shellInstance.actions.open(),openSection: id => shellInstance.actions.openSection(id),close:()=>shellInstance.actions.close()});\n\t\t\t\tconst disposeCommand = ctx.shortcuts.register({');
     return replace(s,'disposeCommand();\n\t\t\t\t\tdisposeSlot();','disposeSettingsNavigation();\n\t\t\t\t\tdisposeCommand();\n\t\t\t\t\tdisposeSlot();');
   }],
   ['ui-sidebar-right','55e410c962d9373ed6588b9ec6f5b848241e2979d1b7d578f149b2a23428ec14',s=>{

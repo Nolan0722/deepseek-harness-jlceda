@@ -1,6 +1,13 @@
 // Runs in the sandboxed DSH iframe, before the client plugin. No Electron preload.
 (() => {
-  const parentOrigin='https://client',channel='jlc-dsh-frame-v1';
+  function resolveParentOrigin(){
+    let origin='https://client';
+    try{const listed=window.location&&window.location.ancestorOrigins;if(listed&&listed.length)origin=String(listed[0]);}catch{}
+    if(origin==='https://client')return origin;
+    try{const url=new URL(origin);if(url.origin===origin&&/^https:\/\/(?:[a-z0-9-]+\.)*(?:lceda\.cn|easyeda\.com)$/.test(origin))return origin;}catch{}
+    return 'https://client';
+  }
+  const parentOrigin=resolveParentOrigin(),channel='jlc-dsh-frame-v1';
   if(window.parent===window)throw Error('JLC DSH requires its editor iframe');
   const pending=new Map(),listeners=new Set();let sequence=0,debug=false;
   function request(action,extra={}){
@@ -33,19 +40,29 @@ window.__ModuleLoader__.load({id:'jlc-dsh-context',factory:require=>{
   const canonical=value=>(value||'').replaceAll('\\','/').toLowerCase();
   const projectKey=target=>JSON.stringify([target.projectId,canonical(target.projectPath),canonical(target.workspaceDirectory)]);
   const CSS=`
-    .jlc-eda-binding{position:relative;box-sizing:border-box;display:flex;flex:0 0 auto;align-self:center;align-items:center;gap:12px;flex-wrap:wrap;width:calc(100% - 2 * var(--dsh-composer-side-clearance,16px));max-width:100%;min-height:44px;margin:0 auto;padding:9px 12px;border:1px solid var(--dsw-alias-border-l1,#e1e5eb);border-radius:10px;background:var(--dsw-specific-menu,#f7f8fa);color:var(--dsw-alias-label-primary,#252a32);font-family:inherit;font-size:12px;line-height:18px;isolation:isolate}
+    .jlc-topbar{box-sizing:border-box;display:flex;align-items:center;gap:8px;width:100%;min-width:0;min-height:40px;padding:6px 8px;overflow:visible;border-bottom:1px solid var(--dsw-alias-border-l3,#e1e5eb);background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#252a32);font-family:inherit;font-size:12px;line-height:18px}
+    .jlc-eda-binding{position:relative;box-sizing:border-box;display:flex;flex:1 1 auto;align-items:center;min-width:0;gap:8px;overflow:visible}
     .jlc-eda-binding__copy{flex:1 1 160px;min-width:0;display:flex;flex-direction:column;gap:2px}
     .jlc-eda-binding__line{display:flex;align-items:center;gap:7px;min-width:0}
-    .jlc-eda-binding__dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--jlc-accent,#5588ff)}
+    .jlc-eda-binding__dot{flex:none;width:6px;height:6px;margin:0;border-radius:50%;background:var(--jlc-accent,#5588ff)}
     .jlc-eda-binding[data-jlc-binding="stale"] .jlc-eda-binding__dot,.jlc-eda-binding[data-jlc-binding="error"] .jlc-eda-binding__dot{background:#c18b36}
-    .jlc-eda-binding__label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
-    .jlc-eda-binding__directory{color:var(--dsw-alias-label-tertiary,#69717d);font-size:11px;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .jlc-eda-binding__mcp{color:var(--dsw-alias-label-secondary,#5c6573);font-size:11px;line-height:16px;overflow-wrap:anywhere}
+    .jlc-eda-binding__label{min-width:0;overflow:visible;white-space:normal;overflow-wrap:anywhere;font-weight:500}
+    .jlc-eda-binding__names{display:flex;flex:1 1 auto;flex-wrap:nowrap;align-items:center;gap:8px;min-width:0;overflow:hidden;font-weight:500}
+    .jlc-eda-binding__project,.jlc-eda-binding__document{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .jlc-eda-binding__document{color:var(--dsw-alias-label-secondary,#5c6573);font-weight:400}
+    .jlc-eda-binding__directory,.jlc-eda-binding__mcp{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    .jlc-eda-binding__directory{color:var(--dsw-alias-label-tertiary,#69717d);font-size:11px;line-height:16px}
+    .jlc-eda-binding__mcp{color:var(--dsw-alias-label-secondary,#5c6573);font-size:11px;line-height:16px}
     .jlc-eda-binding__mcp[data-jlc-mcp="connected"]{color:var(--dsw-alias-success-default,#28805c)}
     .jlc-eda-binding__button{appearance:none;box-sizing:border-box;display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;min-height:28px;max-width:100%;margin:0;padding:4px 9px;border:1px solid var(--dsw-alias-border-l1,#d5dce5);border-radius:6px;background:var(--dsw-specific-input,#fff);color:inherit;font:inherit;line-height:18px;white-space:normal;cursor:pointer}
     .jlc-eda-binding__button:hover{border-color:var(--jlc-accent,#5588ff);background:var(--dsw-specific-button-secondary-hover,#eef3fa)}
     .jlc-eda-binding__button:focus-visible{outline:2px solid var(--jlc-accent,#5588ff);outline-offset:2px}
     .jlc-eda-binding__button:disabled{opacity:.55;cursor:wait}
+    .jlc-topbar__actions{display:flex;flex:none;align-self:center;align-items:center;gap:6px}
+    .jlc-topbar__button{appearance:none;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;margin:0;padding:0;border:1px solid var(--dsw-alias-border-l1,#d5dce5);border-radius:8px;background:var(--dsw-specific-input,#fff);color:inherit;cursor:pointer}
+    .jlc-topbar__button:hover{border-color:var(--jlc-accent,#5588ff);background:var(--dsw-specific-button-secondary-hover,#eef3fa)}
+    .jlc-topbar__button:focus-visible{outline:2px solid var(--jlc-accent,#5588ff);outline-offset:2px}
+    .jlc-topbar__button[aria-expanded="true"]{border-color:var(--jlc-accent,#5588ff);color:var(--jlc-accent,#5588ff)}
   `;
   function createProjectController(ctx){
     const listeners=new Set(),conversations=new Map();
@@ -98,8 +115,8 @@ window.__ModuleLoader__.load({id:'jlc-dsh-context',factory:require=>{
     ctx.effect(()=>()=>{controller.dispose();style.remove();},'jlc-eda project workspace lifecycle');
     // These are project deployment occupants of the official branding/settings slots.
     ctx.effect(()=>ctx.locale.register('jlceda.sidebar',{
-      zh:{name:'JLCEDA Agent',settings:'设置',diagnostics:'连接与诊断',engine:'由 DeepSeek Harness 驱动',refresh:'刷新状态',waiting:'正在读取实际状态…',project:'工程',directory:'工程目录',window:'EDA 窗口',document:'活动文档',connection:'MCP 连接',none:'未打开',unavailable:'暂不可用'},
-      en:{name:'JLCEDA Agent',settings:'Settings',diagnostics:'Connection & diagnostics',engine:'Powered by DeepSeek Harness',refresh:'Refresh status',waiting:'Reading live state…',project:'Project',directory:'Project directory',window:'EDA window',document:'Active document',connection:'MCP connection',none:'Not open',unavailable:'Unavailable'},
+      zh:{name:'JLCEDA Agent',settings:'设置',more:'更多',diagnostics:'连接与诊断',engine:'由 DeepSeek Harness 驱动',refresh:'刷新状态',waiting:'正在读取实际状态…',project:'工程',directory:'工程目录',window:'EDA 窗口',document:'活动文档',connection:'MCP 连接',none:'未打开',unavailable:'暂不可用'},
+      en:{name:'JLCEDA Agent',settings:'Settings',more:'More',diagnostics:'Connection & diagnostics',engine:'Powered by DeepSeek Harness',refresh:'Refresh status',waiting:'Reading live state…',project:'Project',directory:'Project directory',window:'EDA window',document:'Active document',connection:'MCP connection',none:'Not open',unavailable:'Unavailable'},
     }),'jlc-sidebar dictionaries');
     const sidebarCSS=document.createElement('style');sidebarCSS.textContent=`
       html:root[data-jlc-theme="brand"] body{
@@ -145,12 +162,39 @@ window.__ModuleLoader__.load({id:'jlc-dsh-context',factory:require=>{
       .jlc-sidebar-diagnostics dl{display:grid;grid-template-columns:90px minmax(0,1fr);gap:9px;margin:18px 0}
       .jlc-sidebar-diagnostics dd{margin:0;overflow-wrap:anywhere;white-space:pre-wrap}
       .jlc-sidebar-diagnostics dt,.jlc-sidebar-engine{color:var(--dsw-alias-label-tertiary,#69717d)}
+      .wSkVaW_header{display:flex !important;align-items:center;gap:8px;box-sizing:border-box;width:100%;min-width:0;min-height:40px !important;padding:6px 8px !important;overflow:visible !important;border-bottom:1px solid var(--dsw-alias-border-l3,#e1e5eb)}
+      .wSkVaW_headerLeading,.jlc-topbar,.wSkVaW_titleRow{display:contents !important}
+      .jlc-eda-binding{order:1;flex:1 1 auto;min-width:0}
+      .jlc-eda-binding__names{flex:0 1 auto}
+      .wSkVaW_titleCluster{order:2;display:flex !important;flex:0 1 auto;align-items:center;gap:6px;width:max-content;max-width:36%;min-width:0;margin:0;padding:0 0 0 8px;border-left:1px solid var(--dsw-alias-border-l3,#e1e5eb)}
+      .wSkVaW_crumbs{flex:1 1 auto;min-width:0;overflow:hidden}
+      .wSkVaW_crumb,.wSkVaW_crumbCurrent{display:block;max-width:100%;padding:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:400;line-height:18px;color:var(--dsw-alias-label-secondary,#5c6573)}
+      .wSkVaW_headerActions{flex:none;align-items:center}
+      .SVAs4q_label{display:inline-flex !important;flex:none;align-items:center;justify-content:center;width:22px;height:22px;padding:0;gap:0;overflow:hidden;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary,#5c6573);font-size:0;line-height:0}
+      .wSkVaW_tabs{order:3;align-self:center;z-index:1;flex:none;display:inline-flex !important;align-items:center;gap:2px !important;height:26px;margin:0 0 0 auto !important;padding:2px !important;border-radius:8px;background:var(--dsw-alias-fill-tsp-secondary,#eef1f6)}
+      .wSkVaW_tab{height:22px;margin:0;padding:0 8px !important;border:0;border-radius:6px;color:var(--dsw-alias-label-secondary,#5c6573);font-size:12px;font-weight:500;line-height:22px;transition:background-color 120ms ease,color 120ms ease}
+      .wSkVaW_tab:after{display:none !important}
+      .wSkVaW_tabActive{background:#fff;color:var(--dsw-alias-label-primary,#252a32);box-shadow:0 1px 2px rgba(20,28,40,.12)}
+      .wSkVaW_tab:focus-visible,.nL4_yW_moreButton:focus-visible{outline:2px solid var(--jlc-accent,#5588ff);outline-offset:1px}
+      .wSkVaW_headerUtilities{order:4;align-self:center;flex:none;margin:0 !important}
+      .nL4_yW_moreButton{box-sizing:border-box;width:28px !important;height:28px !important;border:1px solid var(--dsw-alias-border-l1,#d5dce5) !important;border-radius:8px !important;background:var(--dsw-specific-input,#fff) !important}
+      .jlc-topbar__actions{order:5}
+      .wSkVaW_headerCorner:not(:has(button)){display:none !important}
+      @media (prefers-reduced-motion:reduce){.wSkVaW_tab{transition:none}}
+      .pI_x6G_handle[data-side="sidebar"]{display:none !important}
+      .hHd-Xa_logoRow,.hHd-Xa_footArea,.hHd-Xa_toggle,.hHd-Xa_topStrip,.hHd-Xa_panelList{display:none !important}
+      .pI_x6G_centerCol{grid-column:2;grid-row:1;min-width:0}
+      .pI_x6G_rightbarCol{grid-column:3;grid-row:1}
+      .pI_x6G_sidebarCol{grid-column:1;grid-row:1;position:absolute !important;z-index:30;top:var(--jlc-topbar-height,40px);right:8px;left:auto !important;width:min(280px,calc(100% - 16px)) !important;height:auto !important;max-height:min(320px,calc(100% - var(--jlc-topbar-height,40px) - 16px)) !important;display:none !important;overflow:auto !important;border:1px solid var(--dsw-alias-border-l1,#e1e5eb) !important;border-radius:12px !important;background:var(--dsw-specific-sidebar-fill,#fff);box-shadow:0 12px 32px rgba(20,28,40,.16)}
+      html[data-jlc-more="open"] .pI_x6G_sidebarCol{display:flex !important}
+      html[data-jlc-more="open"] .hHd-Xa_root{width:100% !important;height:auto !important;max-height:inherit}
+      html[data-jlc-more="open"] .YDXeBa_projectRow,html[data-jlc-more="open"] .YDXeBa_sessionRow{margin:4px 8px;min-height:36px;border:1px solid var(--dsw-alias-border-l1,#e1e5eb);border-radius:10px;background:var(--dsw-specific-input,#fff)}
     `;document.documentElement.dataset.jlcTheme='brand';document.head.appendChild(sidebarCSS);ctx.effect(()=>()=>{sidebarCSS.remove();delete document.documentElement.dataset.jlcTheme;},'jlc-sidebar styles');
     function Mark({size=24}){return h('svg',{width:size,height:size,viewBox:'0 0 24 24',fill:'none','aria-hidden':true},
       h('rect',{x:5,y:5,width:14,height:14,rx:4,stroke:'currentColor',strokeWidth:1.6}),
       h('path',{d:'M9 9h6v6H9zM9 1v4m6-4v4M9 19v4m6-4v4M1 9h4m-4 6h4M19 9h4m-4 6h4',stroke:'currentColor',strokeWidth:1.6,strokeLinecap:'round'}));}
     function Brand({t}){return h('span',{className:'jlc-sidebar-brand','data-jlc-brand':true},t('name'));}
-    function Settings({wide,settingsOpen,openSettings,t}){return h('button',{type:'button',className:'jlc-sidebar-action','data-wide':String(wide),'data-jlc-settings':true,'data-jlc-settings-icon':'gear','aria-label':t('settings'),title:t('settings'),'aria-haspopup':'dialog','aria-expanded':settingsOpen,onClick:openSettings},h(IconSettingsOutlineRegular,{size:18}),wide&&h('span',null,t('settings')));}
+    function openSettings(){ctx.get('jlcSettingsNavigation').open();}
     function Diagnostics({t}){
       const [value,setValue]=React.useState(null),[error,setError]=React.useState('');
       async function read(){try{const [target,mcp]=await Promise.all([window.jlcEDAContext.current(),window.jlcEDAContext.health()]);setValue({target,mcp});setError('');}catch(e){setError(e.message);}}
@@ -162,13 +206,40 @@ window.__ModuleLoader__.load({id:'jlc-dsh-context',factory:require=>{
         h('button',{className:'jlc-sidebar-action',type:'button',onClick:read},t('refresh')),
         h('p',{className:'jlc-sidebar-engine'},t('engine'),' · DSH 0.2.1-rc.2'));
     }
-    for(const [name,Component] of [['sidebar.brand.mark',Mark],['sidebar.brand.name',Brand],['conversation.hero.brand.mark',Mark],['settings.launcher',Settings]])
+    for(const [name,Component] of [['sidebar.brand.mark',Mark],['sidebar.brand.name',Brand],['conversation.hero.brand.mark',Mark]])
       ctx.slots.inject(name,()=>ctx.slots.register({name,locale:'jlceda.sidebar'},Component));
     ctx.slots.inject('settings.section',()=>ctx.slots.register({name:'settings.section',id:'jlceda-diagnostics',order:90,label:()=>ctx.locale.bind('jlceda.sidebar')('diagnostics'),locale:'jlceda.sidebar'},Diagnostics));
     const subscribeSessions=listener=>ctx.sessions.list.subscribe(listener);
-    function Binding({sessionId}){
+    const currentSessionId=()=>Object.values(ctx.sessions.list.getSnapshot().byId).find(row=>(row.retainedBy?.mainView??0)>0)?.id||'';
+    function Binding(){
       const project=React.useSyncExternalStore(controller.source.subscribe,controller.source.getSnapshot);
+      const sessionId=React.useSyncExternalStore(subscribeSessions,currentSessionId);
       const cwd=React.useSyncExternalStore(subscribeSessions,()=>ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd||'');
+      const [more,setMore]=React.useState(false);
+      const barRef=React.useRef(null);
+      React.useEffect(()=>{
+        if(more)document.documentElement.dataset.jlcMore='open';
+        else delete document.documentElement.dataset.jlcMore;
+        return()=>{delete document.documentElement.dataset.jlcMore;};
+      },[more]);
+      React.useLayoutEffect(()=>{
+        const bar=barRef.current;if(!bar)return;
+        const host=bar.closest('.wSkVaW_header')||bar;
+        const apply=()=>document.documentElement.style.setProperty('--jlc-topbar-height',`${host.offsetHeight}px`);
+        apply();const observer=new ResizeObserver(apply);observer.observe(host);return()=>observer.disconnect();
+      },[]);
+      React.useEffect(()=>{
+        if(!more)return;
+        const onPointerDown=event=>{
+          const menu=document.querySelector('.pI_x6G_sidebarCol');
+          if(barRef.current?.contains(event.target))return;
+          if(menu?.contains(event.target)){if(event.target.closest('.YDXeBa_sessionRow'))setMore(false);return;}
+          setMore(false);
+        };
+        const onKey=event=>{if(event.key==='Escape')setMore(false);};
+        document.addEventListener('click',onPointerDown);document.addEventListener('keydown',onKey);
+        return()=>{document.removeEventListener('click',onPointerDown);document.removeEventListener('keydown',onKey);};
+      },[more]);
       const [state,setState]=React.useState(null),[error,setError]=React.useState(''),[busy,setBusy]=React.useState(false);
       const [mcp,setMcp]=React.useState(null);
       React.useEffect(()=>{
@@ -188,7 +259,9 @@ window.__ModuleLoader__.load({id:'jlc-dsh-context',factory:require=>{
       const wrongWorkspace=!!current?.workspaceDirectory&&canonical(cwd)!==canonical(current.workspaceDirectory);
       const mode=error||project.error?'error':project.syncing?'syncing':wrongWorkspace||state?.state==='stale'?'stale':state?'bound':'loading';
       const reasons={PROJECT_CHANGED:'此对话属于其他工程',OTHER_WINDOW:'此对话正在另一个 EDA 窗口中使用'};
-      const label=error||project.error?'工程上下文暂不可用':project.syncing?'正在切换工程工作区…':wrongWorkspace?'会话工作区与当前工程不一致':!state?'正在确认 EDA 工程…':state.state==='bound'?`${current.projectName||'未打开工程'} · ${current.documentName||current.documentId||'工程首页'}`:reasons[state.reason]||'工程连接需要更新';
+      const projectName=current?.projectName||'未打开工程';
+      const documentName=current?.documentName||current?.documentId||'工程首页';
+      const label=error||project.error?'工程上下文暂不可用':project.syncing?'正在切换工程工作区…':wrongWorkspace?'会话工作区与当前工程不一致':!state?'正在确认 EDA 工程…':state.state==='bound'?'':reasons[state.reason]||'工程连接需要更新';
       const directory=current?.workspaceDirectory;
       const connected=mcp?.phase==='connected'&&mcp.bridgeHealthy===true;
       const mcpLabel=connected?`MCP 已连接 · EDA ${mcp.bridgeVersion||mcp.serverVersion||''}`:!mcp||['idle','starting','handshaking','reconnecting'].includes(mcp.phase)?'MCP 正在连接…':'MCP 未连接 · EDA 调用已暂停';
@@ -199,12 +272,17 @@ window.__ModuleLoader__.load({id:'jlc-dsh-context',factory:require=>{
         else await controller.openCurrent(true);
         setError('');
       }catch(e){setError(e.message)}finally{setBusy(false)}}
-      return h('section',{className:'jlc-eda-binding','data-jlc-binding':mode,'data-jlc-conversation':sessionId,'data-jlc-project':current?.projectId||'','data-jlc-document':current?.documentTabId||'','aria-label':'EDA 工程上下文'},
-        h('div',{className:'jlc-eda-binding__copy'},
-          h('div',{className:'jlc-eda-binding__line'},h('span',{className:'jlc-eda-binding__dot','aria-hidden':true}),h('span',{className:'jlc-eda-binding__label',role:'status','aria-live':'polite',title:error||project.error||label},label)),
+      const t=ctx.locale.bind('jlceda.sidebar');
+      return h('div',{ref:barRef,className:'jlc-topbar'},
+        h('section',{className:'jlc-eda-binding','data-jlc-binding':mode,'data-jlc-conversation':sessionId,'data-jlc-project':current?.projectId||'','data-jlc-document':current?.documentTabId||'','aria-label':'EDA 工程上下文'},
+          h('span',{className:'jlc-eda-binding__dot','aria-hidden':true}),
+          label?h('span',{className:'jlc-eda-binding__label',role:'status','aria-live':'polite',title:error||project.error||label},label):h('span',{className:'jlc-eda-binding__names',role:'status','aria-live':'polite',title:`${projectName} ${documentName}`},h('span',{className:'jlc-eda-binding__project'},projectName),h('span',{className:'jlc-eda-binding__document'},documentName)),
+          h('div',{className:'jlc-eda-binding__mcp','data-jlc-mcp':connected?'connected':mcp?.phase||'loading',role:'status',title:mcpDetail},mcpLabel),
           h('div',{className:'jlc-eda-binding__directory','data-jlc-workspace':directory||'',title:directory||''},directory?`工作目录 · ${directory}`:'未找到本地工程目录'),
-          h('div',{className:'jlc-eda-binding__mcp','data-jlc-mcp':connected?'connected':mcp?.phase||'loading',role:'status',title:mcpDetail},mcpLabel)),
-        (mode==='stale'||mode==='error')&&h('button',{className:'jlc-eda-binding__button',type:'button',onClick:act,disabled:busy||project.syncing},busy?'处理中…':state?.reason==='OTHER_WINDOW'?'在此窗口新建会话':wrongWorkspace||project.error||state?.reason==='PROJECT_CHANGED'?'切换到工程对话':'新建当前工程会话'));
+          (mode==='stale'||mode==='error')&&h('button',{className:'jlc-eda-binding__button',type:'button',onClick:act,disabled:busy||project.syncing},busy?'处理中…':state?.reason==='OTHER_WINDOW'?'在此窗口新建会话':wrongWorkspace||project.error||state?.reason==='PROJECT_CHANGED'?'切换到工程对话':'新建当前工程会话')),
+        h('div',{className:'jlc-topbar__actions'},
+          h('button',{type:'button',className:'jlc-topbar__button','data-jlc-more':true,'aria-label':t('more'),title:t('more'),'aria-expanded':more,onClick:()=>setMore(open=>!open)},h('svg',{width:16,height:16,viewBox:'0 0 16 16',fill:'none','aria-hidden':true},h('circle',{cx:3,cy:8,r:1.2,fill:'currentColor'}),h('circle',{cx:8,cy:8,r:1.2,fill:'currentColor'}),h('circle',{cx:13,cy:8,r:1.2,fill:'currentColor'}))),
+          h('button',{type:'button',className:'jlc-topbar__button','data-jlc-settings':true,'data-jlc-settings-icon':'gear','aria-label':t('settings'),title:t('settings'),'aria-haspopup':'dialog',onClick:()=>{setMore(false);openSettings();}},h(IconSettingsOutlineRegular,{size:16}))));
     }
     if(window.jlcEDAContext?.debug)window.__JLC_DSH_CONTEXT_TEST__={
       create:()=>controller.openCurrent(true),open:id=>ctx.uiWorkspace.openSession(id),project:controller.source.getSnapshot,
@@ -219,6 +297,20 @@ window.__ModuleLoader__.load({id:'jlc-dsh-context',factory:require=>{
         return rows.length;
       },
     };
-    ctx.slots.inject('conversation.input.dock',()=>ctx.slots.register({name:'conversation.input.dock',id:'jlc-eda-binding',order:-100},Binding));
+    let pendingExpand=false;
+    function pinSidebar(){
+      const frame=document.querySelector('.pI_x6G_frame');if(!frame)return;
+      if(frame.hasAttribute('data-sidebar-collapsed')){
+        if(!pendingExpand){pendingExpand=true;ctx.get('layout').toggleSidebar();setTimeout(()=>{pendingExpand=false;pinSidebar();},80);}
+        return;
+      }
+      const columns=frame.style.gridTemplateColumns;
+      if(columns&&!/^0px/.test(columns.trim()))frame.style.gridTemplateColumns=columns.replace(/^[\d.]+px/,'0px');
+    }
+    const sidebarObserver=new MutationObserver(()=>pinSidebar());
+    const watchSidebar=()=>{const frame=document.querySelector('.pI_x6G_frame');if(!frame)return false;sidebarObserver.observe(frame,{attributes:true,attributeFilter:['style']});pinSidebar();return true;};
+    if(!watchSidebar()){const boot=setInterval(()=>{if(watchSidebar())clearInterval(boot);},200);ctx.effect(()=>()=>clearInterval(boot),'jlc-sidebar pin boot');}
+    ctx.effect(()=>()=>{pendingExpand=false;sidebarObserver.disconnect();delete document.documentElement.dataset.jlcMore;},'jlc-sidebar pin');
+    ctx.slots.inject('conversation.header.leading',()=>ctx.slots.register({name:'conversation.header.leading',id:'jlc-eda-topbar',locale:'jlceda.sidebar'},Binding));
   }};
 }});

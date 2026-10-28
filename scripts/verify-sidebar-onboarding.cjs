@@ -12,7 +12,7 @@ function step(name){report.steps.push({name});console.log(name);}
 (async()=>{try{
   const profile=path.join(home,'profiles/web');fs.mkdirSync(profile,{recursive:true});
   for(const name of ['package.json','cordis.yml'])fs.copyFileSync(path.join(root,'lab/dsh-home/profiles/web',name),path.join(profile,name));
-  const overlay=path.join(home,'sidebar.json');fs.writeFileSync(overlay,JSON.stringify([...sidebarProfile(),{id:'directory-picker',disabled:true},{insert:[{id:'directory-picker-browse',name:'@deepseek-ai/dsh-host-directory-picker-browse'},{id:'ui-directory-picker-browse',name:'@deepseek-ai/dsh-client-ui-directory-picker-browse'}]},{id:'webserver',config:{host:'127.0.0.1',port:0,tls:{certFile:path.join(root,'lab/tls/cert.pem'),keyFile:path.join(root,'lab/tls/key.pem')}}},{id:'ui-settings-models',config:{credentialOnboarding:true}}]));
+  const overlay=path.join(home,'sidebar.json');fs.writeFileSync(overlay,JSON.stringify([...sidebarProfile(),{id:'webserver',config:{host:'127.0.0.1',port:0,tls:{certFile:path.join(root,'lab/tls/cert.pem'),keyFile:path.join(root,'lab/tls/key.pem')}}},{id:'ui-settings-models',config:{credentialOnboarding:true}}]));
   assert.equal(fs.existsSync(path.join(home,'.credentials.yaml')),false);
   const env={...process.env,DSH_HOME:home,PATH:path.dirname(node)+';'+process.env.PATH};for(const key of Object.keys(env))if(/KEY|PASSWORD|SECRET|TOKEN/i.test(key))delete env[key];delete env.ELECTRON_RUN_AS_NODE;
   child=spawn(node,[path.join(root,'runtime/node_modules/@deepseek-ai/dsh/lib/bin.js'),'web','--patch',overlay,'--host','127.0.0.1','--port','0','--no-open'],{cwd:root,env,windowsHide:true,stdio:['ignore','pipe','pipe']});
@@ -41,19 +41,14 @@ function step(name){report.steps.push({name});console.log(name);}
   await page.setViewportSize({width:1000,height:820});
   await page.getByRole('button',{name:'打开侧边栏',exact:true}).click();
   const selected=await page.evaluate(()=>localStorage.getItem('dsh.sessions.current'));
-  assert.ok(selected,'A current conversation exists before adding a workspace');
-  await page.getByRole('button',{name:'添加工作区',exact:true}).click();
-  const picker=page.getByRole('dialog',{name:'选择工作区目录'});await picker.waitFor();
-  await picker.getByRole('button',{name:'编辑路径',exact:true}).click();
-  await picker.getByRole('textbox',{name:'编辑路径',exact:true}).fill(path.join(root,'lab/phase3-fixture/project-B'));
-  await picker.getByRole('textbox',{name:'编辑路径',exact:true}).press('Enter');
-  await picker.getByRole('textbox',{name:'编辑路径',exact:true}).waitFor({state:'hidden'});
-  await picker.getByRole('button',{name:'打开',exact:true}).click();
-  await picker.waitFor({state:'hidden'});
-  await page.getByText('project-B',{exact:true}).first().waitFor();
+  assert.ok(selected,'A current conversation exists');
+  assert.equal(await page.getByRole('button',{name:'添加工作区',exact:true}).count(),0);
+  assert.equal(await page.getByRole('menuitem',{name:'添加工作区…'}).count(),0);
+  await page.keyboard.press('Control+Alt+O');
+  assert.equal(await page.getByRole('dialog',{name:'选择工作区目录'}).count(),0);
   assert.equal(await page.evaluate(()=>localStorage.getItem('dsh.sessions.current')),selected);
   await page.screenshot({path:path.join(root,'evidence/sidebar-add-workspace-1000.png')});
-  step('add-workspace-folder-button-registers-directory-without-changing-current-conversation');
+  step('add-workspace-control-shortcut-and-directory-dialog-absent');
   assert.equal(modelRequests,0);report.modelRequests=modelRequests;step('no-model-request-and-no-credential-submission');report.passed=true;
 }catch(error){report.passed=false;report.error=error.stack;process.exitCode=1;console.error(error);
   if(browser){const page=browser.contexts()[0]?.pages()[0];if(page){report.visibleText=(await page.locator('body').innerText()).slice(0,3000);await page.screenshot({path:path.join(root,'evidence/sidebar-onboarding-failure.png')});}}

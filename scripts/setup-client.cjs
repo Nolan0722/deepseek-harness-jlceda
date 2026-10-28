@@ -14,6 +14,7 @@ function sourceFiles(directory){
 }
 function verifySource(record){const actual=sourceFiles(record.path);if(JSON.stringify(actual)!==JSON.stringify(record.files))throw Error('Source client files changed during setup; inspect lab/setup/install.json');return actual.length;}
 function removeStaging(directory){const resolved=path.resolve(directory);if(!inside(cache,resolved)||!/^client-|^previous-/.test(path.basename(resolved)))throw Error('Refusing cleanup outside generated setup directories');if(fs.existsSync(resolved)&&fs.realpathSync.native(resolved).toLowerCase()!==resolved.toLowerCase())throw Error('Refusing redirected setup cleanup');fs.rmSync(resolved,{recursive:true,force:true});}
+function renameDirectory(from,to){for(let attempt=0;attempt<40;attempt++){try{fs.renameSync(from,to);return;}catch(error){if(!['EPERM','EBUSY','EACCES'].includes(error.code)||attempt===39)throw error;Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,250);}}}
 function prepare(source){
   source=fs.realpathSync.native(path.resolve(source));
   if(source.toLowerCase()===root.toLowerCase()||inside(source,root)||inside(root,source))throw Error('Provide an external, unpatched client installation; source and project must not overlap');
@@ -30,12 +31,12 @@ function prepare(source){
     for(const file of files){const to=path.join(staging,file.path);fs.mkdirSync(path.dirname(to),{recursive:true});fs.copyFileSync(path.join(source,file.path),to);if(digest(to)!==file.sha256)throw Error('Client changed while being copied: '+file.path);}
     const patch=applyPlan(plan,staging);verifySource(record);
     if(fs.existsSync(completion))fs.unlinkSync(completion);
-    if(fs.existsSync(target)){fs.renameSync(target,previous);backedUp=true;}
-    fs.renameSync(staging,target);promoted=true;
+    if(fs.existsSync(target)){renameDirectory(target,previous);backedUp=true;}
+    renameDirectory(staging,target);promoted=true;
     fs.writeFileSync(recordFile,JSON.stringify({schemaVersion:1,date:new Date().toISOString(),projectRoot:root,source:record,client:patch,credentialsImported:false},null,2));
     if(backedUp)removeStaging(previous);
     console.log(`Independent client prepared: ${plan.info.version}; ${files.length} source files verified unchanged.`);
-  }catch(error){if(backedUp&&!promoted)fs.renameSync(previous,target);if(!promoted&&priorCompletion)fs.writeFileSync(completion,priorCompletion);throw error;}
+  }catch(error){if(backedUp&&!promoted)renameDirectory(previous,target);if(!promoted&&priorCompletion)fs.writeFileSync(completion,priorCompletion);throw error;}
   finally{if(fs.existsSync(staging))removeStaging(staging);}
 }
 if(require.main===module){try{
