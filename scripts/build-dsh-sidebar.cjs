@@ -2,7 +2,7 @@
 // A reproducible customization of the installed, pinned rc.2 client artifacts.
 // Original artifacts are hash-checked and retained as build inputs, never as a runtime fallback.
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
-const root=path.resolve(__dirname,'..'),cache=path.join(root,'.cache/dsh-sidebar-rc2');
+const defaultRoot=path.resolve(__dirname,'..');
 const hash=s=>crypto.createHash('sha256').update(s).digest('hex');
 function replace(s,from,to){if(s.split(from).length!==2)throw Error('Non-unique customization anchor: '+from.slice(0,100));return s.replace(from,to);}
 function replaceCount(s,from,to,count){if(s.split(from).length-1!==count)throw Error('Unexpected artwork anchor count: '+from);return s.split(from).join(to);}
@@ -36,6 +36,10 @@ const specs=[
     return s;
   }],
   ['ui-conversation','8554738cbeeb5218ad1bfa4773ef094363b066d052a1893d7a96797c5bc33a63',s=>{
+    // Session identity and its mode remain visible before the first message.
+    s=replace(s,'children: [!hideChrome && (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsxs)("div", {','children: [(0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsxs)("div", {');
+    s=replace(s,'className: ConversationRoot_module_css_default.crumbs,','className: ConversationRoot_module_css_default.crumbs,\n                        "data-jlc-session-lineage": ancestry.length > 1 ? "nested" : "root",');
+    s=replaceCount(s,'children: summary.displayTitle','title: summary.displayTitle, children: summary.displayTitle',2);
     s=between(s,'\t\tfunction WorkspaceChip(','\t\tconst HERO_SWIM_UP_PATH',`\t\tfunction WorkspaceChip({ label, t }) {
             return (0, react_jsx_runtime.jsxs)("span", {
                 className: HeroShell_module_css_default.workspace,
@@ -54,6 +58,10 @@ const specs=[
     s=replace(s,'--meter-tint:var(--dsw-static-blue-450)','--meter-tint:var(--dsw-alias-brand-primary)');
     return s;
   }],
+  ['session-log-export','7ac601f68c6c7749c586462a1d27b1ac69019a4ba7cc7aff60de89838fa350fb',s=>{
+    // Remove only the header menu, retaining native log recording and /export.
+    return between(s,'\t\t\tctx.slots.inject("conversation.session.header.utilities",','\n\t\t}\n\t\t//#endregion','');
+  },'runtime/node_modules/@deepseek-ai/dsh-session-log-export/lib/client.js'],
   ['ui-settings-models','190498e15358bcd3fe6810fe6368023a20b0403e3ea493bc979eca9bdb593b28',s=>{
     s=replace(s,'if (!("dshDesktop" in globalThis)) ctx.slots.inject("settings.onboarding", () => ctx.slots.register({\n\t\t\t\tname: "settings.onboarding",\n\t\t\t\tid: "welcome-notice",\n\t\t\t\torder: -100,\n\t\t\t\tinject: welcomeInjected\n\t\t\t}, WelcomeNotice));','// Project deployment omits the product preview step; credential onboarding remains.');
     s=replace(s,'id: "models",\n\t\t\t\torder: 10,','id: "models",\n\t\t\t\torder: -10,');
@@ -91,7 +99,7 @@ const specs=[
             if (id === "schedules") return (0,react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconClockOutlineRegular,{className:SettingsRoot_module_css_default.navIcon,size:16});`);
     const responsive=`.VOzbGW_panel{width:1180px;height:min(920px,calc(100dvh - 32px));max-width:calc(100vw - 32px)}.VOzbGW_content{min-height:0}.VOzbGW_options{padding:0 16px 16px}@media(max-width:600px){.VOzbGW_panel{flex-direction:column;max-width:calc(100vw - 24px);height:calc(100dvh - 24px)}.VOzbGW_nav{width:100%;padding:14px 12px 0;gap:12px}.VOzbGW_navTitle{min-height:28px;padding:0 4px}.VOzbGW_navList{flex-direction:row;flex-wrap:wrap;overflow:visible;gap:4px}.VOzbGW_navCell{flex:none;height:36px;padding:7px 10px;gap:6px}.VOzbGW_navLabel{flex:none}.VOzbGW_header{position:absolute;right:12px;top:14px;height:28px;padding:0}.VOzbGW_options{padding:12px}}`;
     s=replace(s,'tag.textContent = css$7;','tag.textContent = css$7 + '+JSON.stringify(responsive)+';');
-    s=replace(s,'const disposeCommand = ctx.shortcuts.register({','const disposeSettingsNavigation = ctx.reflect.provide("jlcSettingsNavigation", {open:()=>shellInstance.actions.open(),openSection: id => shellInstance.actions.openSection(id),close:()=>shellInstance.actions.close()});\n\t\t\t\tconst disposeCommand = ctx.shortcuts.register({');
+    s=replace(s,'const disposeCommand = ctx.shortcuts.register({','const disposeSettingsNavigation = ctx.reflect.provide("jlcSettingsNavigation", {openSection: id => shellInstance.actions.openSection(id),close:()=>shellInstance.actions.close()});\n\t\t\t\tconst disposeCommand = ctx.shortcuts.register({');
     return replace(s,'disposeCommand();\n\t\t\t\t\tdisposeSlot();','disposeSettingsNavigation();\n\t\t\t\t\tdisposeCommand();\n\t\t\t\t\tdisposeSlot();');
   }],
   ['ui-sidebar-right','55e410c962d9373ed6588b9ec6f5b848241e2979d1b7d578f149b2a23428ec14',s=>{
@@ -123,7 +131,10 @@ const specs=[
     return replace(s,'rgb(101, 142, 255)','var(--dsw-static-deepseek-400)');
   },'runtime/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/index-CN7NIWNw.js'],
 ];
-function build(){
+function atomicWrite(file,content){const temporary=file+'.jlc-build-'+crypto.randomUUID();try{fs.writeFileSync(temporary,content);fs.renameSync(temporary,file);}finally{if(fs.existsSync(temporary))fs.unlinkSync(temporary);}}
+function build(root=defaultRoot){
+  root=path.resolve(root);const cache=path.join(root,'.cache/dsh-sidebar-rc2'),receipt=path.join(root,'evidence/dsh-sidebar-build.json');
+  const previous=fs.existsSync(receipt)?JSON.parse(fs.readFileSync(receipt,'utf8')):{edits:[]};
   fs.mkdirSync(cache,{recursive:true});
   const edits=specs.map(([pkg,expected,transform,relative])=>{
     const file=path.join(root,relative||`runtime/node_modules/@deepseek-ai/dsh-client-${pkg}/lib/client.js`),input=path.join(cache,pkg+'.js');
@@ -131,13 +142,17 @@ function build(){
     if(!fs.existsSync(input)){if(hash(current)!==expected)throw Error('Unsupported rc.2 input: '+pkg);fs.writeFileSync(input,current);}
     const original=fs.readFileSync(input,'utf8');if(hash(original)!==expected)throw Error('Corrupt build input: '+pkg);
     const output=transform(original);
-    if(current!==original&&current!==output)throw Error('Unexpected runtime customization: '+pkg);
+    // Incremental builds accept only the original, this output, or a byte-exact
+    // output recorded by our previous build. Fresh setup needs no build receipt.
+    const recorded=previous.edits?.some(edit=>edit.pkg===pkg&&edit.inputSha256===expected&&edit.outputSha256===hash(current));
+    if(current!==original&&current!==output&&!recorded)throw Error('Unexpected runtime customization: '+pkg);
     return {pkg,file,source:output,inputSha256:expected,outputSha256:hash(output),changed:current!==output};
   });
-  for(const edit of edits){if(edit.changed)fs.writeFileSync(edit.file,edit.source);delete edit.source;}
+  for(const edit of edits){if(edit.changed)atomicWrite(edit.file,edit.source);delete edit.source;}
   const report={date:new Date().toISOString(),base:'0.2.1-rc.2',runtimeFallback:false,edits};
-  fs.writeFileSync(path.join(root,'evidence/dsh-sidebar-build.json'),JSON.stringify(report,null,2));
+  atomicWrite(receipt,JSON.stringify(report,null,2));
   console.log('Built project-bound DSH sidebar: '+edits.length+' pinned client artifacts.');
+  return report;
 }
 if(require.main===module)build();
-module.exports={build};
+module.exports={build,inputs:specs.map(([pkg,expected,,relative])=>({pkg,expected,relative:relative||`runtime/node_modules/@deepseek-ai/dsh-client-${pkg}/lib/client.js`}))};

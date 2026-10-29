@@ -63,7 +63,7 @@ async function clickFrame(selector){await evaluate(frame,`(()=>{const e=document
   for(const width of [360,440,720]){
     report.stage='viewport '+width;await setFrameViewport(editor,width,820);
     await waitFor(()=>evaluate(frame,`innerWidth===${width}&&document.documentElement.scrollWidth<=${width+1}`));
-    const geometry=await evaluate(frame,'(()=>{const c=document.querySelector("[data-jlc-binding]"),i=document.querySelector("[data-composer-card]"),s=document.querySelector("[data-jlc-settings]");return {width:innerWidth,scrollWidth:document.documentElement.scrollWidth,card:c.getBoundingClientRect().toJSON(),input:i.getBoundingClientRect().toJSON(),settings:s.getBoundingClientRect().toJSON()};})()');
+    const geometry=await evaluate(frame,'(()=>{const c=document.querySelector("[data-jlc-binding]"),i=document.querySelector("[data-composer-card]"),s=document.querySelector("[data-jlc-settings]");return {width:innerWidth,scrollWidth:document.documentElement.scrollWidth,card:c.closest("header").getBoundingClientRect().toJSON(),input:i.getBoundingClientRect().toJSON(),settings:s.getBoundingClientRect().toJSON()};})()');
     assert.ok(geometry.scrollWidth<=width+1);assert.ok(geometry.card.left>=0&&geometry.card.right<=width+1);assert.ok(geometry.card.bottom<=geometry.input.top);assert.ok(geometry.settings.width>0);
     await clickFrame('[data-jlc-settings]');
     await waitFor(()=>evaluate(frame,'!!document.querySelector("[role=dialog]")'));
@@ -99,11 +99,11 @@ async function clickFrame(selector){await evaluate(frame,`(()=>{const e=document
   await setFrameViewport(editor,720,820);await waitFor(()=>evaluate(frame,'innerWidth===720'));await delay(350);
   assert.equal(await evaluate(frame,'document.querySelector("button[aria-label=打开侧边栏]")?.checkVisibility()??false'),false);
   await waitFor(()=>evaluate(frame,'!document.querySelector(".pI_x6G_frame")?.hasAttribute("data-sidebar-collapsed")'));
-  await clickFrame('[data-jlc-more]');
-  const history=await waitFor(()=>evaluate(frame,'(()=>{const menu=document.querySelector(".pI_x6G_sidebarCol");const box=menu?.getBoundingClientRect();const rows=[...document.querySelectorAll(".YDXeBa_sessionRow,.YDXeBa_projectRow")];const open=document.documentElement.dataset.jlcMore==="open"&&box&&box.height>40&&getComputedStyle(menu).display!=="none";return open?{expanded:true,cards:rows.length,sessionVisible:rows.some(row=>row.classList.contains("YDXeBa_sessionRow")),workspaceVisible:rows.some(row=>row.classList.contains("YDXeBa_projectRow"))||document.body.innerText.includes("工作区"),settingsVisible:document.querySelector("[data-jlc-settings]")?.checkVisibility(),addVisible:!!document.querySelector("button[aria-label=添加工作区]"),dock:!!document.querySelector(".jlc-eda-binding")?.closest("[data-composer-card],._7yHdaG_dock")}:null;})()'));
+  await clickFrame('[data-jlc-history]');
+  const history=await waitFor(()=>evaluate(frame,'(()=>{const menu=document.querySelector(".pI_x6G_sidebarCol");const box=menu?.getBoundingClientRect();const rows=[...document.querySelectorAll(".YDXeBa_sessionRow,.YDXeBa_projectRow")];const open=document.documentElement.dataset.jlcHistory==="open"&&box&&box.height>40&&getComputedStyle(menu).display!=="none";return open?{expanded:true,cards:rows.length,sessionVisible:rows.some(row=>row.classList.contains("YDXeBa_sessionRow")),workspaceVisible:rows.some(row=>row.classList.contains("YDXeBa_projectRow"))||document.body.innerText.includes("工作区"),settingsVisible:document.querySelector("[data-jlc-settings]")?.checkVisibility(),addVisible:!!document.querySelector("button[aria-label=添加工作区]"),dock:!!document.querySelector(".jlc-eda-binding")?.closest("[data-composer-card],._7yHdaG_dock")}:null;})()'));
   assert.ok(history.expanded);assert.ok(history.workspaceVisible&&history.sessionVisible&&history.settingsVisible);assert.equal(history.addVisible,false);assert.equal(history.dock,false);
   const historyImage=await captureFrame(editor);fs.writeFileSync(path.join(root,'evidence/sidebar-profile-history-720.png'),Buffer.from(historyImage.data,'base64'));
-  await clickFrame('[data-jlc-more]');await waitFor(()=>evaluate(frame,'document.documentElement.dataset.jlcMore!=="open"'));await clearFrameViewport(editor);
+  await clickFrame('[data-jlc-history]');await waitFor(()=>evaluate(frame,'document.documentElement.dataset.jlcHistory!=="open"'));await clearFrameViewport(editor);
   step('engineering-workspace-history-expands-and-collapses-without-leaving-conversation',history);
   step('model-configuration-remains-reachable-at-all-tested-widths');
   report.passed=true;

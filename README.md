@@ -2,6 +2,8 @@
 
 将 DeepSeek Harness 嵌入嘉立创 EDA 的原生 Agent 侧栏。使用独立客户端副本、独立 profile 和 DSH_HOME，直接复用嘉立创原生 MCP。会话绑定所属 EDA 窗口、工程和工程目录；主要支持 `.eprj3`，`.eprj2` 保留基本支持。
 
+顶部使用单行布局，直接显示会话名称与 Agent 模式。工程、活动图页、MCP 实际连接状态、会话与工程的绑定关系集中在关联状态按钮的详情中；异常状态会在按钮上标记。工程工作区和会话历史通过文件夹按钮打开，齿轮打开原生设置。默认只展示对话，不显示轨迹切换和日志下载菜单；后台轨迹记录及原生日志导出能力保留。
+
 ## 安装
 
 准备 Windows x64、带 npm 的 Node.js，以及 Git for Windows（提供 OpenSSL）。也可以单独提供 OpenSSL。Windows 的 .NET Framework C# 编译器用于生成无控制台启动器，不需要安装 Visual Studio。
@@ -35,6 +37,8 @@ cd deepseek-harness-jlceda
 
 关闭本项目的客户端后，可以重新运行 `setup.ps1` 更新副本；profile 和 DSH_HOME 保留在副本之外。宿主引导使用相对路径，不写入开发电脑的绝对路径。移动已安装目录时，工程和历史会话中的绝对路径不自动迁移，建议在新目录从源码重新安装并重新打开工程。不要直接搬运旧的已补丁客户端、凭据或证书。新建目录进行源码安装时会创建全新的本地数据。
 
+只更新顶部栏等 DSH 前端代码时，可在关闭副本后运行 `.\.tools\node_modules\node-win-x64\bin\node.exe .\scripts\build-dsh-sidebar.cjs`，再重新启动副本。构建器从锁定的原始包重建，并核对上次生成文件的哈希；可直接更新本项目旧的生成产物，遇到未记录的手工修改会停止。它不修改 profile、模型凭据或会话。仅改源码或刷新旧页面不会自动更新已经加载的组件。
+
 ```powershell
 # 按本次安装记录复核使用者提供的原安装未变动
 .\scripts\verify-original.ps1
@@ -53,6 +57,8 @@ $node = '.\.tools\node_modules\node-win-x64\bin\node.exe'
 & $node --test .\scripts\verify-folder-project.cjs .\scripts\verify-project-binding.cjs .\scripts\verify-frame-bridge.cjs .\scripts\verify-dsh-network.cjs .\scripts\verify-mcp-transport.cjs .\scripts\verify-project-ready.cjs .\scripts\verify-startup-status.cjs .\scripts\verify-dsh-temp.cjs .\scripts\verify-native-request-lifecycle.cjs
 # 在已完成 setup、没有其他客户端实例占用调试端口的目录内执行：
 & $node .\scripts\verify-portable-runtime.cjs
+# 独立测试安装完成原生激活后，验证顶部栏并截图；脚本自动启动和退出该副本：
+& $node .\scripts\verify-topbar.cjs
 # 另建仅含源码的本地 Git 仓库，克隆到全新目录并执行 setup 和运行回归：
 .\scripts\verify-clean-clone.ps1 -ClientPath '<你的客户端目录>' -Destination '<尚不存在的验证目录>'
 ```

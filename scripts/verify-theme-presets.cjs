@@ -19,7 +19,7 @@ async function binding(){return evaluate(frame,'(()=>{const b=document.querySele
   await close();await setFrameViewport(editor,720,820);await waitFor(()=>evaluate(frame,'innerWidth===720'));await delay(250);
   assert.equal(await evaluate(editor,'document.querySelector("[title=Agent]")?.textContent'),'Agent');step('native-EDA-tab-uses-short-Agent-label');
   await evaluate(frame,'window.__JLC_DSH_CONTEXT_TEST__.create()');await waitFor(()=>evaluate(frame,'document.querySelector("[data-jlc-binding]")?.dataset.jlcBinding==="bound"'));
-  await evaluate(frame,'document.querySelector("[data-jlc-more]")?.click()');
+  await evaluate(frame,'document.querySelector("[data-jlc-history]")?.click()');
   await waitFor(()=>evaluate(frame,'!!document.querySelector("[class*=folderActive] svg")'));
   wasDark=await evaluate(frame,'document.body.hasAttribute("data-ds-dark-theme")');
   for(const dark of [false,true]){
@@ -29,7 +29,7 @@ async function binding(){return evaluate(frame,'(()=>{const b=document.querySele
     step('derived-palette-highlight-and-folder-artwork-'+(dark?'dark':'light'),colors);
   }
   await evaluate(frame,`document.body.toggleAttribute('data-ds-dark-theme',${wasDark})`);
-  await evaluate(frame,'if(document.documentElement.dataset.jlcMore==="open")document.querySelector("[data-jlc-more]")?.click()');
+  await evaluate(frame,'if(document.documentElement.dataset.jlcHistory==="open")document.querySelector("[data-jlc-history]")?.click()');
   await evaluate(frame,'(()=>{const transfer=new DataTransfer();transfer.items.add(new File(["theme preview"],"theme-probe.txt",{type:"text/plain"}));document.dispatchEvent(new DragEvent("dragenter",{bubbles:true,cancelable:true,dataTransfer:transfer}));})()');
   await waitFor(()=>evaluate(frame,'!!document.querySelector("#dshDropOverlayClip")'));
   const drop=await evaluate(frame,'[...document.querySelector("#dshDropOverlayClip").closest("svg").querySelectorAll("rect")].map(e=>({fill:e.getAttribute("fill"),computed:getComputedStyle(e).fill}))');

@@ -83,7 +83,7 @@ const readOne=id=>`const c=await eda.sch_PrimitiveComponent.get(${JSON.stringify
   step('native-REQUEST_TIMEOUT-is-unknown-and-followed-by-independent-readback',{callId:timeoutId,recoveryCall:recovered.call});
   report.stage='health-UI';
   await waitFor(()=>evaluate(guest,'document.querySelector("[data-jlc-mcp]")?.getAttribute("data-jlc-mcp")==="connected"'));
-  const healthLabel=await evaluate(guest,'document.querySelector("[data-jlc-mcp]").textContent');assert.match(healthLabel,/MCP 已连接/);
+  const healthLabel=await evaluate(guest,'document.querySelector("[data-jlc-mcp]").getAttribute("aria-label")');assert.match(healthLabel,/MCP 已连接/);
   step('UI-displays-actual-MCP-and-EDA-version',{label:healthLabel});
   report.stage='real-transport-loss';
   const before=hostState();assert.equal(before.execPath,path.join(root,'lab/client/lceda-pro.exe'));assert.equal(before.mcp.endpoint,before.endpoint);assert.ok(before.mcp.pid&&before.mcp.pid!==owner);
@@ -98,7 +98,7 @@ const readOne=id=>`const c=await eda.sch_PrimitiveComponent.get(${JSON.stringify
   report.stage='layout';
   for(const width of [380,720,1447]){
     await setFrameViewport(editor,width,900);await delay(180);
-    const layout=await evaluate(guest,'(()=>{const c=document.querySelector("[data-jlc-binding]"),m=c.querySelector("[data-jlc-mcp]"),i=document.querySelector("[data-composer-card]");return {card:c.getBoundingClientRect().toJSON(),mcp:m.getBoundingClientRect().toJSON(),input:i.getBoundingClientRect().toJSON(),width:innerWidth}})()');
+    const layout=await evaluate(guest,'(()=>{const c=document.querySelector("[data-jlc-binding]"),m=c.querySelector("[data-jlc-mcp]"),i=document.querySelector("[data-composer-card]");return {card:c.closest("header").getBoundingClientRect().toJSON(),mcp:m.getBoundingClientRect().toJSON(),input:i.getBoundingClientRect().toJSON(),width:innerWidth}})()');
     assert.ok(layout.card.bottom+3<=layout.input.top);assert.ok(layout.card.left>=0&&layout.card.right<=width+1);assert.ok(layout.mcp.top>=layout.card.top&&layout.mcp.bottom<=layout.card.bottom);
     const image=await captureFrame(editor);fs.writeFileSync(path.join(root,'evidence',`phase2-mcp-${width}.png`),Buffer.from(image.data,'base64'));
     step(`MCP-status-layout-${width}`,layout);

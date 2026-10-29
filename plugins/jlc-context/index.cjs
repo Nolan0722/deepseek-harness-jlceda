@@ -64,6 +64,19 @@ exports.apply=async function(ctx,config){
           const query=JSON.parse(buffer.slice(0,buffer.indexOf('\n')));
           const agent=ctx.get('agents')?.get(query.conversationId);
           if(!agent)throw Error('No live DSH agent for this conversation');
+          if(query.action==='topbar-transcript-fixture'){
+            const path=require('node:path'),{pathToFileURL}=require('node:url');
+            const root=path.resolve(__dirname,'../..'),fixtureRoot=path.join(root,'lab/topbar-fixture');
+            const relative=path.relative(fixtureRoot,path.resolve(agent.session.header.cwd));
+            if(!relative||relative==='..'||relative.startsWith('..'+path.sep)||path.isAbsolute(relative))throw Error('Transcript fixtures require a disposable topbar workspace');
+            if(agent.session.log.some(event=>['user/message','assistant/message','turn/start'].includes(event.type)))throw Error('Transcript fixtures require a fresh conversation');
+            const {createUserMessage,createAssistantMessage}=await import(pathToFileURL(path.join(root,'runtime/node_modules/@deepseek-ai/dsh-llm/lib/index.js')).href);
+            agent.session.append('turn/start',{turn:1});agent.session.append('step/start',{turn:1,step:1});
+            agent.session.append('user/message',createUserMessage({content:[{type:'text',text:'自动化布局验证：检查已完成会话的顶部工具栏。'}],source:{kind:'ui-regression-fixture'}}),{surfaceOp:'append'});
+            agent.session.append('assistant/message',{turn:1,step:1,message:createAssistantMessage({content:[{type:'text',text:'## 自动化布局验证\n\n这是本地构造的已完成会话，用于验证宽屏顶部栏、设置和关联状态菜单。未请求模型，也未执行工程修改。'}],source:{provider:'ui-regression-fixture',model:'fixture'}}),stream:[]},{surfaceOp:'append'});
+            agent.session.append('step/end',{turn:1,step:1});agent.session.append('turn/end',{turn:1,reason:{kind:'completed'}});
+            await ctx.get('sessions').flush(agent.session);return {fixture:true,modelRequests:0};
+          }
           if(query.action==='list')return ctx.tools.schemas(agent).map(t=>t.name);
           if(query.action==='workspace')return {root:agent.session.header.cwd,cwd:ctx.workingDirectory.get(agent.session)};
           if(query.action==='ptc-regression'){
