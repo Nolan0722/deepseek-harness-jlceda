@@ -24,8 +24,10 @@ async function clickFrame(selector){await evaluate(frame,`(()=>{const e=document
   await evaluate(frame,'location.reload()');
   await waitFor(()=>evaluate(frame,'!!window.__JLC_DSH_CONTEXT_TEST__'));
   const initial=await waitFor(async()=>{const ui=await evaluate(frame,'window.__JLC_DSH_CONTEXT_TEST__.ui()');return ui.workspaces.length>0&&Object.keys(ui.sessions).length>0&&ui;});
-  assert.deepEqual(initial.panels,[]);assert.deepEqual([...initial.settings].sort(),['agent-presets','general','jlceda-diagnostics','models','plugin-manager','plugins','schedules']);assert.deepEqual(initial.onboarding,['deepseek-official']);
-  assert.ok(!initial.commands.includes('workspace.add'));assert.ok(!initial.commands.some(c=>/plugin|schedule|terminal|browser/.test(c)));assert.ok(initial.commands.includes('session.new'));
+  // Account registration is native again; its visibility belongs to our panel.
+  assert.deepEqual(initial.panels,[]);assert.deepEqual(initial.settings.filter(id=>id!=='account').sort(),['agent-presets','general','jlceda-diagnostics','models','plugin-manager','plugins','schedules']);assert.deepEqual([...new Set(initial.onboarding)].sort(),['deepseek-official','welcome-notice']);
+  assert.ok(initial.commands.includes('workspace.add'));const add=await evaluate(frame,'window.__JLC_DSH_CONTEXT_TEST__.workspaceAdd()');assert.equal(add.directoryFlows,0);assert.equal(add.consumed,true);
+  assert.ok(!initial.commands.some(c=>/plugin|schedule|terminal|browser/.test(c)));assert.ok(initial.commands.includes('session.new'));
   step('unrelated-panels-settings-and-commands-not-registered',{panels:initial.panels,settings:initial.settings,commands:initial.commands,onboarding:initial.onboarding});
   assert.ok(initial.workspaces.length>0);assert.ok(initial.workspaces.some(w=>w.sessionIds.length>0));
   const historicIds=Object.keys(initial.sessions);step('existing-engineering-workspaces-and-session-history-retained',{workspaceCount:initial.workspaces.length,sessionCount:historicIds.length});

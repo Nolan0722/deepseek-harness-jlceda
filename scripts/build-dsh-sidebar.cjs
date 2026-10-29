@@ -23,23 +23,21 @@ const specs=[
                 }).catch(reason => this.notify({kind:"createFailed",message:reason.message}));
             }
 `);
-    // Register a directory without changing the currently bound conversation.
-    s=replace(s,'startSession(workspaceId, { clearPreviousDraft: false });','// Project conversations are selected only by the EDA project controller.');
-    // The EDA project controller creates the workspace. Manual add stays unreachable.
-    s=replace(s,'add: () => {\n\t\t\t\t\tstate.set(state.getSnapshot().directoryBusy ? state.getSnapshot() : {\n\t\t\t\t\t\t...state.getSnapshot(),\n\t\t\t\t\t\taddRequested: true\n\t\t\t\t\t});\n\t\t\t\t},','add: () => {},');
-    s=replace(s,'register("workspace.add", () => t("workspace.add"), ["add workspace", "open folder"], "KeyO", ["primary"], ["primary", "alt"], () => {\n\t\t\t\tconst reason = addReason();\n\t\t\t\treturn reason === null ? {\n\t\t\t\t\tstatus: "handled",\n\t\t\t\t\trun: controls.add\n\t\t\t\t} : {\n\t\t\t\t\tstatus: "blocked",\n\t\t\t\t\treason\n\t\t\t\t};\n\t\t\t});\n','');
-    s=replace(s,'const addEntries = flowAvailable ? [{\n\t\t\t\tid: ADD_WORKSPACE,\n\t\t\t\tlabel: t("menu.addWorkspace"),\n\t\t\t\ticon: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPlusOutlineRegular, { size: 16 }),\n\t\t\t\tdisabled: flowBusy\n\t\t\t}] : [];','const addEntries = [];');
-    const buttonAt=s.indexOf(', directoryFlowAvailable && (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {');
-    const buttonUntil=buttonAt<0?-1:s.indexOf(']\n',buttonAt);
-    if(buttonAt<0||buttonUntil<0||s.includes(', directoryFlowAvailable &&',buttonAt+1))throw Error('Unsupported add-workspace button');
-    s=s.slice(0,buttonAt)+s.slice(buttonUntil);
+    // Directory-flow visibility and shortcut blocking stay native. The deployment
+    // disables directory-picker; startSession above remains the binding boundary.
     return s;
   }],
   ['ui-conversation','8554738cbeeb5218ad1bfa4773ef094363b066d052a1893d7a96797c5bc33a63',s=>{
-    // Session identity and its mode remain visible before the first message.
-    s=replace(s,'children: [!hideChrome && (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsxs)("div", {','children: [(0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsxs)("div", {');
-    s=replace(s,'className: ConversationRoot_module_css_default.crumbs,','className: ConversationRoot_module_css_default.crumbs,\n                        "data-jlc-session-lineage": ancestry.length > 1 ? "nested" : "root",');
-    s=replaceCount(s,'children: summary.displayTitle','title: summary.displayTitle, children: summary.displayTitle',2);
+    // During native HMR the main slot is already mounted. Do not publish the
+    // composer before its ConversationController service is ready; otherwise
+    // the slot's error boundary permanently hides the input after the reload.
+    // Cordis owns registration/disposal through the actual service dependency.
+    s=replace(s,'slots.inject("main", function* () {','ctx.inject(["conversation"], scope => scope.slots.inject("main", function* () {');
+    s=replace(s,'yield registerComposerBar();\n\t\t\t});','yield registerComposerBar();\n\t\t\t}));');
+    // Presentation seam only. The original registration remains the owner of
+    // its store, session scope and child slots; delegate its bound props intact.
+    s=replace(s,'"conversation.session.header.lineage": {','"conversation.session.header.presentation": {kind:"single",scope:"session"},\n                    "conversation.session.header.lineage": {');
+    s=replace(s,'}, ConversationSessionHeader);','}, props => props.renderSlot("conversation.session.header.presentation", {native:props}));\n            slots.inject("conversation.session.header.presentation",()=>slots.register({name:"conversation.session.header.presentation"},({native})=>(0,react_jsx_runtime.jsx)(ConversationSessionHeader,native)));');
     s=between(s,'\t\tfunction WorkspaceChip(','\t\tconst HERO_SWIM_UP_PATH',`\t\tfunction WorkspaceChip({ label, t }) {
             return (0, react_jsx_runtime.jsxs)("span", {
                 className: HeroShell_module_css_default.workspace,
@@ -58,53 +56,40 @@ const specs=[
     s=replace(s,'--meter-tint:var(--dsw-static-blue-450)','--meter-tint:var(--dsw-alias-brand-primary)');
     return s;
   }],
-  ['session-log-export','7ac601f68c6c7749c586462a1d27b1ac69019a4ba7cc7aff60de89838fa350fb',s=>{
-    // Remove only the header menu, retaining native log recording and /export.
-    return between(s,'\t\t\tctx.slots.inject("conversation.session.header.utilities",','\n\t\t}\n\t\t//#endregion','');
-  },'runtime/node_modules/@deepseek-ai/dsh-session-log-export/lib/client.js'],
-  ['ui-settings-models','190498e15358bcd3fe6810fe6368023a20b0403e3ea493bc979eca9bdb593b28',s=>{
-    s=replace(s,'if (!("dshDesktop" in globalThis)) ctx.slots.inject("settings.onboarding", () => ctx.slots.register({\n\t\t\t\tname: "settings.onboarding",\n\t\t\t\tid: "welcome-notice",\n\t\t\t\torder: -100,\n\t\t\t\tinject: welcomeInjected\n\t\t\t}, WelcomeNotice));','// Project deployment omits the product preview step; credential onboarding remains.');
-    s=replace(s,'id: "models",\n\t\t\t\torder: 10,','id: "models",\n\t\t\t\torder: -10,');
-    return s;
-  }],
-  ['ui-settings-account','ec4ca325a530d68c7e69df5465b4ef82a257e2be179f32801bd4b17b13e89c8a',s=>{
-    // Retain the Models sign-in slot and its authentication pages, removing only
-    // the standalone account launcher/section that carries subscription and promotion.
-    return between(s,'\t\t\tctx.slots.inject("settings.launcher",','\n\t\t}\n\t\t//#endregion','');
-  }],
+  // Kept as an integrity/restoration target, with no transform. Incremental
+  // installs restore the upstream bytes; clean installs leave them untouched.
+  ['session-log-export','7ac601f68c6c7749c586462a1d27b1ac69019a4ba7cc7aff60de89838fa350fb',s=>s,'runtime/node_modules/@deepseek-ai/dsh-session-log-export/lib/client.js'],
+  ['ui-settings-models','190498e15358bcd3fe6810fe6368023a20b0403e3ea493bc979eca9bdb593b28',s=>s],
+  ['ui-settings-account','ec4ca325a530d68c7e69df5465b4ef82a257e2be179f32801bd4b17b13e89c8a',s=>s],
   ['ui-schedule','46f2cfd0bfc2be7ae2159a6f52f929911e0087b7b48c62de7f31c675fbe0a0a0',s=>{
     return between(s,'\t\t\tctx.slots.inject("main",','\t\t\tctx.uiConversation.events.register(scheduleTurnDefinition);',`\t\t\tctx.slots.inject("settings.section", () => ctx.slots.register({
                 name: "settings.section", id: PANEL_ID, order: 25,
                 locale: MANAGER_NS, label: () => t("panel"),
                 inject: () => ({...detail,onNewTask: () => {ctx.uiWorkspace.startSession();}})
-            }, props => (0,react_jsx_runtime.jsx)("div",{
-                "data-jlc-automation-settings":true,style:{height:"100%",minHeight:360,minWidth:0},
-                children:(0,react_jsx_runtime.jsx)(TaskManagerPage,{...props,
+            }, props => (0,react_jsx_runtime.jsx)(TaskManagerPage,{...props,
                     onNewTask:()=>{props.close();props.onNewTask();},
                     onOpenSession:id=>{props.close();props.onOpenSession(id);}
-                })
-            })));
+                })));
 `);
   }],
   ['ui-plugin-manager','b4efaa441258a547a0d7b3cab559fe073c69e69fe2bbb617c710ded134e7c4f9',s=>{
     s=replace(s,'ctx.slots.inject("main", function* () {','ctx.slots.inject("settings.section", function* () {');
     s=replace(s,'name: "main",\n\t\t\t\t\tkey: PANEL_ID,','name: "settings.section",\n\t\t\t\t\tid: "plugin-manager", order: 20, label: () => t("panel"),');
-    s=replace(s,'}, PluginManagerPage);','}, props => (0,react_jsx_runtime.jsx)("div",{"data-jlc-plugin-manager-settings":true,style:{height:"100%",minHeight:360,minWidth:0},children:(0,react_jsx_runtime.jsx)(PluginManagerPage,props)}));');
     s=replace(s,'ctx.layout.selectPanel(PANEL_ID);','ctx.get("jlcSettingsNavigation").openSection("plugin-manager");');
     return between(s,'\t\t\tctx.slots.inject("sidebar.panellist",','\n\t\t}\n\t\t//#endregion','');
   }],
   ['ui-settings-general','fb6c8d32d1994454578caa31cc975575a789e11f0afd6d3c19fe769f47050f7e',s=>{
-    s=replace(s,'\t\tfunction navIcon(id) {',`\t\tfunction navIcon(id) {
-            if (id === "plugin-manager") return (0,react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconPluginPinwheelOutlineRegular,{className:SettingsRoot_module_css_default.navIcon,size:16});
-            if (id === "schedules") return (0,react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconClockOutlineRegular,{className:SettingsRoot_module_css_default.navIcon,size:16});`);
-    const responsive=`.VOzbGW_panel{width:1180px;height:min(920px,calc(100dvh - 32px));max-width:calc(100vw - 32px)}.VOzbGW_content{min-height:0}.VOzbGW_options{padding:0 16px 16px}@media(max-width:600px){.VOzbGW_panel{flex-direction:column;max-width:calc(100vw - 24px);height:calc(100dvh - 24px)}.VOzbGW_nav{width:100%;padding:14px 12px 0;gap:12px}.VOzbGW_navTitle{min-height:28px;padding:0 4px}.VOzbGW_navList{flex-direction:row;flex-wrap:wrap;overflow:visible;gap:4px}.VOzbGW_navCell{flex:none;height:36px;padding:7px 10px;gap:6px}.VOzbGW_navLabel{flex:none}.VOzbGW_header{position:absolute;right:12px;top:14px;height:28px;padding:0}.VOzbGW_options{padding:12px}}`;
-    s=replace(s,'tag.textContent = css$7;','tag.textContent = css$7 + '+JSON.stringify(responsive)+';');
+    // Keep native modal state, onboarding, shortcuts and section ownership.
+    // Only the panel presentation is a new replaceable slot.
+    s=replace(s,'"settings.launcher": {','"settings.panel": {kind:"single",scope:"root"},\n                        "settings.launcher": {');
+    s=replace(s,'open && (0, react_jsx_runtime.jsx)(SettingsPanel, {\n\t\t\t\t\trows,\n\t\t\t\t\trenderSlot,\n\t\t\t\t\tactiveId,\n\t\t\t\t\tonSelect: actions.select,\n\t\t\t\t\tonClose: close\n\t\t\t\t})','open && renderSlot("settings.panel", {native:{rows,renderSlot,activeId,onSelect:actions.select,onClose:close}})');
+    s=replace(s,'ctx.slots.inject("settings.trigger",','ctx.slots.inject("settings.panel",()=>ctx.slots.register({name:"settings.panel"},({native})=>(0,react_jsx_runtime.jsx)(SettingsPanel,native)));\n            ctx.slots.inject("settings.trigger",');
     s=replace(s,'const disposeCommand = ctx.shortcuts.register({','const disposeSettingsNavigation = ctx.reflect.provide("jlcSettingsNavigation", {openSection: id => shellInstance.actions.openSection(id),close:()=>shellInstance.actions.close()});\n\t\t\t\tconst disposeCommand = ctx.shortcuts.register({');
     return replace(s,'disposeCommand();\n\t\t\t\t\tdisposeSlot();','disposeSettingsNavigation();\n\t\t\t\t\tdisposeCommand();\n\t\t\t\t\tdisposeSlot();');
   }],
   ['ui-sidebar-right','55e410c962d9373ed6588b9ec6f5b848241e2979d1b7d578f149b2a23428ec14',s=>{
-    s=between(s,'\t\t\t\tconst disposeExpand =','\t\t\t\tconst guideInjected =','');
-    s=replace(s,'\n\t\t\t\t\tdisposeExpand();','');
+    // The header expand occupant stays upstream; our plugin shadows its slot.
+    // PanelChrome and its shortcut have no equivalent public extension point.
     s=between(s,'const disposers = [shortcuts.register({','\t\t\tfor (const kind of ["split", "fullscreen"])','const disposers = [];\n');
     return between(s,'\t\tfunction PanelChrome(','\t\tfunction SidebarPanel(panel) {',`\t\tfunction PanelChrome({fullscreen,t,shortcuts,toggleFullscreen}) {
             const next=fullscreen?"push":"fullscreen",modeLabel=fullscreen?t("chrome.exitFullscreen"):t("chrome.toFullscreen"),mode=shortcuts.find(entry=>entry.id==="pane.fullscreen.toggle");
@@ -118,7 +103,7 @@ const specs=[
     s=replace(s,'fill: "#679EFE"','fill: "var(--dsw-static-deepseek-400)"');
     return replace(s,'fill: "#3964FE"','fill: "var(--dsw-alias-brand-primary)"');
   }],
-  ['ui-trajectory','b11426f89d3b4302964b491d7826a29fe3de390be4bbfae325375f54fe6919ad',s=>replaceCount(s,'var(--dsw-static-blue-500)','var(--dsw-alias-brand-primary)',2)],
+  ['ui-trajectory','b11426f89d3b4302964b491d7826a29fe3de390be4bbfae325375f54fe6919ad',s=>s],
   // Fixed-palette plugin artwork is bundled into the shared frontend, not a feature module.
   ['web-frontend','4bc914bfbb6adbdd63953a29f63835eb7127defd2a973149d64cdab489f1a9a5',s=>{
     s=replaceCount(s,'stroke:"#679EFE"','stroke:"var(--dsw-static-deepseek-400)"',2);
@@ -146,12 +131,12 @@ function build(root=defaultRoot){
     // output recorded by our previous build. Fresh setup needs no build receipt.
     const recorded=previous.edits?.some(edit=>edit.pkg===pkg&&edit.inputSha256===expected&&edit.outputSha256===hash(current));
     if(current!==original&&current!==output&&!recorded)throw Error('Unexpected runtime customization: '+pkg);
-    return {pkg,file,source:output,inputSha256:expected,outputSha256:hash(output),changed:current!==output};
+    return {pkg,file,source:output,inputSha256:expected,outputSha256:hash(output),customized:output!==original,changed:current!==output};
   });
   for(const edit of edits){if(edit.changed)atomicWrite(edit.file,edit.source);delete edit.source;}
   const report={date:new Date().toISOString(),base:'0.2.1-rc.2',runtimeFallback:false,edits};
   atomicWrite(receipt,JSON.stringify(report,null,2));
-  console.log('Built project-bound DSH sidebar: '+edits.length+' pinned client artifacts.');
+  console.log('Built project-bound DSH sidebar: '+edits.filter(edit=>edit.customized).length+' customized, '+edits.filter(edit=>!edit.customized).length+' pristine client artifacts.');
   return report;
 }
 if(require.main===module)build();

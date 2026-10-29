@@ -36,7 +36,9 @@
 window.__ModuleLoader__.load({id:'jlc-dsh-context',factory:require=>{
   const React=require('react');
   const {createPortal}=require('react-dom');
-  const {IconSettingsOutlineRegular,IconFolderOpenRegular}=require('@deepseek-ai/dsh-client-ui-primitives');
+  const {IconSettingsOutlineRegular,IconFolderOpenRegular,IconCloseOutlineRegular,
+    IconPluginPinwheelOutlineRegular,IconClockOutlineRegular,IconAgentPresetOutlineMedium,
+    IconDataOutlineMedium,IconPersonalizationOutlineMedium,IconArchiveOutlineMedium,useModalLayer}=require('@deepseek-ai/dsh-client-ui-primitives');
   const h=React.createElement;
   const canonical=value=>(value||'').replaceAll('\\','/').toLowerCase();
   const projectKey=target=>JSON.stringify([target.projectId,canonical(target.projectPath),canonical(target.workspaceDirectory)]);
@@ -68,7 +70,79 @@ window.__ModuleLoader__.load({id:'jlc-dsh-context',factory:require=>{
     .jlc-context-details dt{color:var(--dsw-alias-label-tertiary,#69717d)}
     .jlc-context-details dd{min-width:0;margin:0;overflow-wrap:anywhere}
     .jlc-context-details__diagnostics{padding:0;border:0;background:transparent;color:var(--jlc-accent,#5588ff);font:inherit;font-size:11px;cursor:pointer}
+    .jlc-settings-overlay{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center}
+    .jlc-settings-mask{position:absolute;inset:var(--dsh-frame-chrome-top,0px) 0 0;background:var(--dsw-alias-bg-mask-1);backdrop-filter:var(--dsw-mask-blur)}
+    .jlc-settings-panel{position:relative;z-index:1;display:flex;width:1180px;height:min(920px,calc(100dvh - 32px));max-width:calc(100vw - 32px);overflow:hidden;border-radius:var(--dsw-radius-panel);background:var(--dsw-alias-bg-layer-2);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-primary);--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}
+    .jlc-settings-panel:focus{outline:none}
+    .jlc-settings-nav{flex:none;display:flex;flex-direction:column;gap:18px;width:188px;padding:22px 12px 0;box-sizing:border-box}
+    .jlc-settings-title{padding:0 12px;font-size:16px;line-height:24px;font-weight:500}
+    .jlc-settings-navlist{display:flex;flex-direction:column;gap:4px;overflow-y:auto}
+    .jlc-settings-navitem{display:flex;align-items:center;gap:8px;min-height:40px;padding:9px 16px 9px 12px;box-sizing:border-box;border:0;border-radius:var(--dsw-radius-md);background:transparent;color:inherit;cursor:pointer;font:inherit;font-size:14px;line-height:22px;text-align:left}
+    .jlc-settings-navitem:hover{background:var(--dsw-specific-sidebar-nav-item-hover)}
+    .jlc-settings-navitem[aria-current=true]{background:var(--dsw-specific-sidebar-nav-item-active)}
+    .jlc-settings-navitem svg{flex:none}.jlc-settings-navitem span{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+    .jlc-settings-content{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
+    .jlc-settings-header{flex:none;display:flex;align-items:flex-start;justify-content:space-between;gap:8px;height:54px;padding:20px 14px 8px 10px;box-sizing:border-box}
+    .jlc-settings-actions{min-width:0;display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-left:auto}
+    .jlc-settings-close{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:inherit;cursor:pointer}
+    .jlc-settings-close:hover{background:var(--dsw-alias-interactive-bg-hover)}
+    .jlc-settings-options{flex:1;min-height:0;padding:0 16px 16px;overflow-y:auto}
+    .jlc-settings-page[data-jlc-plugin-manager-settings],.jlc-settings-page[data-jlc-automation-settings]{height:100%;min-height:360px;min-width:0}
+    @media(max-width:600px){.jlc-settings-panel{flex-direction:column;max-width:calc(100vw - 24px);height:calc(100dvh - 24px)}.jlc-settings-nav{width:100%;padding:14px 12px 0;gap:12px}.jlc-settings-title{min-height:28px;padding:0 4px}.jlc-settings-navlist{flex-direction:row;flex-wrap:wrap;overflow:visible;gap:4px}.jlc-settings-navitem{flex:none;min-height:36px;padding:7px 10px;gap:6px}.jlc-settings-header{position:absolute;right:12px;top:14px;height:28px;padding:0}.jlc-settings-options{padding:12px}}
   `;
+  // Presentation only: these components consume props delegated by their native
+  // slot owner. Stores, child-slot authorization and all page actions stay there.
+  function SessionHeader({native}){
+    const {sessionId,useSessions,renderSlot,open,t}=native;
+    const ancestry=useSessions(state=>{
+      const rows=[],seen=new Set();let id=sessionId;
+      while(id&&!seen.has(id)){
+        seen.add(id);const row=state.byId[id];if(!row)break;
+        rows.unshift({id:row.id,title:row.displayTitle,subagent:row.origin==='subagent'});
+        if(row.origin!=='subagent')break;id=row.parentId;
+      }
+      return rows;
+    },(a,b)=>a.length===b.length&&a.every((row,i)=>row.id===b[i].id&&row.title===b[i].title&&row.subagent===b[i].subagent));
+    return h('div',{className:'jlc-session-header','data-jlc-session-header':true},
+      h('nav',{className:'jlc-session-title','aria-label':t('session.hierarchy'),'data-jlc-session-lineage':ancestry.length>1?'nested':'root'},
+        ...ancestry.map((row,index)=>{
+          const last=index===ancestry.length-1;
+          const title=last?h('span',{className:'jlc-session-title__current',title:row.title},row.title):
+            h('button',{type:'button',className:'jlc-session-title__ancestor',title:row.title,onClick:()=>open(row.id)},row.title);
+          const owner={lineageSessionId:row.id,displayTitle:row.title,...last?{}:{openTitle:()=>open(row.id)}};
+          const content=row.subagent?renderSlot('conversation.session.header.lineage',owner,{fallback:title}):
+            h(React.Fragment,null,title,last&&renderSlot('conversation.session.header.lineage',owner,{fallback:null}));
+          return h('span',{className:'jlc-session-title__segment',key:row.id},index>0&&h('span',{'aria-hidden':true},'/'),content);
+        }),ancestry.length===0&&h('span',{className:'jlc-session-title__current',title:sessionId},sessionId)),
+      h('div',{className:'jlc-session-actions'},renderSlot('conversation.session.header.actions',{})),
+      h('div',{className:'jlc-session-utilities'},renderSlot('conversation.session.header.utilities',{})),
+      h('div',{className:'jlc-session-corner','data-conversation-header-corner':true},renderSlot('conversation.session.header.corner',{})));
+  }
+  const settingsIcons={models:IconDataOutlineMedium,'agent-presets':IconAgentPresetOutlineMedium,
+    plugins:IconPersonalizationOutlineMedium,'plugin-manager':IconPluginPinwheelOutlineRegular,
+    schedules:IconClockOutlineRegular,'archived-sessions':IconArchiveOutlineMedium};
+  function SettingsPanel({native}){
+    const {rows,renderSlot,activeId,onSelect,onClose}=native;
+    const visible=rows.filter(row=>row.id!=='account').slice().sort((a,b)=>(a.id==='models'?-10:a.order)-(b.id==='models'?-10:b.order));
+    const active=visible.find(row=>row.id===activeId)?.id??visible[0]?.id;
+    const titleId=React.useId(),panel=React.useRef(null);
+    useModalLayer(panel,true,onClose);
+    return createPortal(h('div',{className:'jlc-settings-overlay',role:'presentation'},
+      h('div',{className:'jlc-settings-mask','aria-hidden':true,onClick:onClose}),
+      h('div',{ref:panel,tabIndex:-1,className:'jlc-settings-panel','data-jlc-settings-panel':true,'data-shortcut-modal':'settings',role:'dialog','aria-modal':true,'aria-labelledby':titleId},
+        h('nav',{className:'jlc-settings-nav'},
+          h('div',{className:'jlc-settings-title',id:titleId,tabIndex:-1,'data-modal-autofocus':active===undefined?'':undefined},renderSlot('settings.header',{})),
+          h('div',{className:'jlc-settings-navlist'},...visible.map(row=>h('button',{key:row.id,type:'button',className:'jlc-settings-navitem',
+            'data-jlc-settings-section':row.id,'aria-current':row.id===active?'true':undefined,'data-modal-autofocus':row.id===active?'':undefined,onClick:()=>onSelect(row.id)},
+            h(settingsIcons[row.id]||IconSettingsOutlineRegular,{size:16}),h('span',null,row.label))))),
+        h('div',{className:'jlc-settings-content'},
+          h('div',{className:'jlc-settings-header'},h('div',{className:'jlc-settings-actions'},renderSlot('settings.action',{})),
+            h('button',{type:'button',className:'jlc-settings-close',onClick:onClose},h(IconCloseOutlineRegular,{size:14}),h('span',{className:'jlc-sr-only'},renderSlot('settings.close',{})))),
+          h('div',{className:'jlc-settings-options'},active!==undefined&&h('div',{className:'jlc-settings-page',
+            'data-jlc-plugin-manager-settings':active==='plugin-manager'?true:undefined,'data-jlc-automation-settings':active==='schedules'?true:undefined},
+            renderSlot('settings.section',{close:onClose},{only:active}))))
+      )),document.body);
+  }
   function createProjectController(ctx){
     const listeners=new Set(),conversations=new Map();
     let snapshot={current:null,syncing:false,error:''},seenKey,pending=false,disposed=false;
@@ -113,6 +187,31 @@ window.__ModuleLoader__.load({id:'jlc-dsh-context',factory:require=>{
     return {source,openCurrent,dispose(){disposed=true;clearInterval(timer);listeners.clear();}};
   }
   return {inject:['slots','sessions','uiWorkspace','workspaces','locale'],async apply(ctx){
+    // Native slot priority shadows an occupant without deleting its registration,
+    // services or commands. Cordis owns disposal and restores the upstream entry.
+    const slotOverrides=[
+      {name:'conversation.session.header.utilities',id:'session-log-download'},
+      {name:'conversation.session.header.corner'},
+      {name:'settings.onboarding',id:'welcome-notice',order:-100},
+      {name:'settings.launcher',locale:'settings'},
+      {name:'conversation.session.header.presentation'},
+      {name:'settings.panel'},
+    ];
+    function HiddenEntry(){return null;}
+    function CompleteWelcome({complete}){
+      // A null-only onboarding step would block the native credential step.
+      React.useEffect(()=>{complete();},[complete]);
+      return null;
+    }
+    function SettingsLauncher({wide,settingsOpen,settingsShortcut,openSettings,t}){
+      return h('button',{type:'button',className:'jlc-sidebar-action','data-jlc-settings-launcher':true,
+        'data-wide':wide,'aria-label':t('trigger'),'aria-haspopup':'dialog','aria-expanded':settingsOpen,
+        'aria-keyshortcuts':settingsShortcut?.aria,onClick:openSettings},
+        h(IconSettingsOutlineRegular,{size:16}),wide&&h('span',null,t('trigger')));
+    }
+    const slotComponents=[HiddenEntry,HiddenEntry,CompleteWelcome,SettingsLauncher,SessionHeader,SettingsPanel];
+    slotOverrides.forEach((options,index)=>ctx.slots.inject(options.name,()=>ctx.slots.register(
+      {...options,priority:-100},slotComponents[index])));
     await window.jlcEDAContext.ready;
     const style=document.createElement('style');style.textContent=CSS;style.id='jlc-eda-binding-style';document.head.appendChild(style);
     const controller=createProjectController(ctx);
@@ -167,16 +266,16 @@ window.__ModuleLoader__.load({id:'jlc-dsh-context',factory:require=>{
       .jlc-sidebar-diagnostics dl{display:grid;grid-template-columns:90px minmax(0,1fr);gap:9px;margin:18px 0}
       .jlc-sidebar-diagnostics dd{margin:0;overflow-wrap:anywhere;white-space:pre-wrap}
       .jlc-sidebar-diagnostics dt,.jlc-sidebar-engine{color:var(--dsw-alias-label-tertiary,#69717d)}
-      .wSkVaW_header{position:relative;display:grid !important;grid-template-columns:28px minmax(0,1fr) auto 28px 28px;grid-template-rows:28px;align-items:center;column-gap:4px;row-gap:0;box-sizing:border-box;width:100%;min-width:0;min-height:0 !important;padding:6px 8px !important;overflow:visible !important;border-bottom:1px solid var(--dsw-alias-border-l3,#e1e5eb);background:var(--dsw-alias-bg-base,#fff)}
-      .wSkVaW_headerLeading,.wSkVaW_titleRow,.wSkVaW_titleCluster{display:contents !important}
-      .wSkVaW_crumbs{grid-column:2;grid-row:1;display:flex;min-width:0;overflow:hidden;padding:0 2px}
-      .wSkVaW_crumbSeg{min-width:0;flex:0 1 auto}
-      .wSkVaW_crumb,.wSkVaW_crumbCurrent{display:block;max-width:100%;min-width:0;padding:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500;line-height:20px;color:var(--dsw-alias-label-primary,#252a32)}
-      .wSkVaW_headerActions{grid-column:3;grid-row:1;display:flex;align-items:center;gap:4px;min-width:0;max-width:88px;margin:0;overflow:hidden}
-      .SVAs4q_label{display:block !important;box-sizing:border-box;min-width:0;max-width:88px;height:26px;margin:0;padding:3px 5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary,#5c6573);font-size:11px;line-height:20px}
-      .SVAs4q_label svg{display:inline-block;vertical-align:-3px;margin-right:4px}
-      .wSkVaW_headerUtilities:empty{display:none}
-      .wSkVaW_headerCorner:not(:has(button)){display:none !important}
+      header:has(> [data-conversation-header-leading] .jlc-topbar){position:relative;display:grid;grid-template-columns:28px minmax(0,1fr) auto 28px 28px;grid-template-rows:28px;align-items:center;column-gap:4px;row-gap:0;box-sizing:border-box;width:100%;min-width:0;min-height:0;padding:6px 8px;overflow:visible;border-bottom:1px solid var(--dsw-alias-border-l3,#e1e5eb);background:var(--dsw-alias-bg-base,#fff)}
+      [data-conversation-header-leading]:has(.jlc-topbar),.jlc-session-header{display:contents}
+      .jlc-session-title{grid-column:2;grid-row:1;display:flex;min-width:0;overflow:hidden;padding:0 2px}
+      .jlc-session-title__segment{display:flex;align-items:center;gap:4px;min-width:0;flex:0 1 auto}
+      .jlc-session-title__ancestor,.jlc-session-title__current{display:block;max-width:100%;min-width:0;padding:0;border:0;background:transparent;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:inherit;font-size:12px;font-weight:500;line-height:20px;color:var(--dsw-alias-label-primary,#252a32)}
+      .jlc-session-title__ancestor{cursor:pointer}
+      .jlc-session-actions{grid-column:3;grid-row:1;display:flex;align-items:center;gap:4px;min-width:0;max-width:88px;margin:0;overflow:hidden}
+      .jlc-session-actions [data-slot] > *{display:block;box-sizing:border-box;min-width:0;max-width:88px;height:26px;margin:0;padding:3px 5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary,#5c6573);font-size:11px;line-height:20px}
+      .jlc-session-actions svg{display:inline-block;vertical-align:-3px;margin-right:4px}
+      .jlc-session-utilities:empty,.jlc-session-corner:empty{display:none}
       .pI_x6G_handle[data-side="sidebar"]{display:none !important}
       .pI_x6G_frame[data-animating]{transition:none !important}
       .hHd-Xa_logoRow,.hHd-Xa_footArea,.hHd-Xa_toggle,.hHd-Xa_topStrip,.hHd-Xa_panelList{display:none !important}
@@ -235,7 +334,7 @@ window.__ModuleLoader__.load({id:'jlc-dsh-context',factory:require=>{
       },[detailsOpen]);
       React.useLayoutEffect(()=>{
         const bar=barRef.current;if(!bar)return;
-        const host=bar.closest('.wSkVaW_header')||bar;
+        const host=bar.closest('header')||bar;
         const apply=()=>document.documentElement.style.setProperty('--jlc-topbar-height',`${host.offsetHeight}px`);
         apply();const observer=new ResizeObserver(apply);observer.observe(host);return()=>observer.disconnect();
       },[]);
@@ -308,9 +407,20 @@ window.__ModuleLoader__.load({id:'jlc-dsh-context',factory:require=>{
           h('button',{type:'button',className:'jlc-topbar__button jlc-topbar__settings','data-jlc-settings':true,'data-jlc-settings-icon':'gear','aria-label':t('settings'),title:t('settings'),'aria-haspopup':'dialog',onClick:()=>{setHistoryOpen(false);setDetailsOpen(false);openSettings();}},h(IconSettingsOutlineRegular,{size:16}))));
     }
     if(window.jlcEDAContext?.debug)window.__JLC_DSH_CONTEXT_TEST__={
+      slotOverrides:()=>slotOverrides.map((options,index)=>({name:options.name,id:options.id,
+        originalRegistered:ctx.slots.entries(options.name).some(e=>e.component!==slotComponents[index]&&e.options.id===options.id),
+        active:ctx.slots.entriesOfSlot(options.name).some(e=>e.component===slotComponents[index]),
+        winners:ctx.slots.entriesOfSlot(options.name).filter(e=>e.options.id===options.id).length})),
       create:options=>controller.openCurrent(true,options),open:id=>ctx.uiWorkspace.openSession(id),project:controller.source.getSnapshot,
       ui:()=>({panels:ctx.slots.entries('sidebar.panellist').map(e=>e.options.id),settings:ctx.slots.entries('settings.section').map(e=>e.options.id),headerUtilities:ctx.slots.entries('conversation.session.header.utilities').map(e=>e.options.id),onboarding:ctx.slots.entries('settings.onboarding').map(e=>e.options.id),views:ctx.slots.entries('conversation.view').map(e=>e.options.id),commands:ctx.get('shortcuts').catalog.getSnapshot().map(e=>e.id),workspaces:ctx.workspaces.list.getSnapshot().items.map(w=>({id:w.workspaceId,path:w.path,sessionIds:w.sessionIds})),sessions:Object.fromEntries(Object.entries(ctx.sessions.list.getSnapshot().byId).map(([id,s])=>[id,{id,cwd:s.cwd,title:s.displayTitle,blank:s.blank}]))}),
-      newFromNavigation:()=>ctx.uiWorkspace.startSession(),
+      newFromNavigation:workspaceId=>ctx.uiWorkspace.startSession(workspaceId),
+      workspaceAdd:()=>{
+        const shortcuts=ctx.get('shortcuts'),binding=shortcuts.catalog.getSnapshot().find(row=>row.id==='workspace.add')?.binding;
+        if(!binding)throw Error('Native workspace.add binding missing');
+        const event=new KeyboardEvent('keydown',{key:'o',code:binding.code,ctrlKey:binding.modifiers.includes('control'),altKey:binding.modifiers.includes('alt'),shiftKey:binding.modifiers.includes('shift'),metaKey:binding.modifiers.includes('meta'),bubbles:true,cancelable:true});
+        document.body.dispatchEvent(event);
+        return {directoryFlows:ctx.slots.entries('sidebar.workspaces.directoryFlow').length,consumed:event.defaultPrevented};
+      },
       toggleNavigation:()=>ctx.get('layout').toggleSidebar(),
       openGuidePreview:()=>ctx.get('sidebarRight').openTab('guide'),
       closeGuidePreview:()=>ctx.get('sidebarRight').toggleExpanded(),

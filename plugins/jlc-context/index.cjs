@@ -73,7 +73,8 @@ exports.apply=async function(ctx,config){
             const {createUserMessage,createAssistantMessage}=await import(pathToFileURL(path.join(root,'runtime/node_modules/@deepseek-ai/dsh-llm/lib/index.js')).href);
             agent.session.append('turn/start',{turn:1});agent.session.append('step/start',{turn:1,step:1});
             agent.session.append('user/message',createUserMessage({content:[{type:'text',text:'自动化布局验证：检查已完成会话的顶部工具栏。'}],source:{kind:'ui-regression-fixture'}}),{surfaceOp:'append'});
-            agent.session.append('assistant/message',{turn:1,step:1,message:createAssistantMessage({content:[{type:'text',text:'## 自动化布局验证\n\n这是本地构造的已完成会话，用于验证宽屏顶部栏、设置和关联状态菜单。未请求模型，也未执行工程修改。'}],source:{provider:'ui-regression-fixture',model:'fixture'}}),stream:[]},{surfaceOp:'append'});
+            const text='## 自动化布局验证\n\n这是本地构造的已完成会话，用于验证宽屏顶部栏、设置和关联状态菜单。未请求模型，也未执行工程修改。'+(query.long===true?'\n\n输入框回归：读取真实工程状态，执行后回读验证。这段本地测试记录用于覆盖长会话滚动布局。'.repeat(80):'');
+            agent.session.append('assistant/message',{turn:1,step:1,message:createAssistantMessage({content:[{type:'text',text}],source:{provider:'ui-regression-fixture',model:'fixture'}}),stream:[]},{surfaceOp:'append'});
             agent.session.append('step/end',{turn:1,step:1});agent.session.append('turn/end',{turn:1,reason:{kind:'completed'}});
             await ctx.get('sessions').flush(agent.session);return {fixture:true,modelRequests:0};
           }
