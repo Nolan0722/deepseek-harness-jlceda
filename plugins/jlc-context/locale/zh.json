@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "JLCEDA Agent",
+    "description": "提供工程绑定、原生 EDA 工具、实时上下文、专用提示词及内嵌侧栏。需要 JLCEDA Agent 宿主。"
+  }
+}

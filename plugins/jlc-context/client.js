@@ -33,7 +33,7 @@
   window.addEventListener('pagehide',()=>{for(const entry of pending.values()){clearTimeout(entry.timer);entry.reject(Error('DSH frame closed'));}pending.clear();listeners.clear();});
 })();
 
-window.__ModuleLoader__.load({id:'jlc-dsh-context',factory:require=>{
+window.__ModuleLoader__.load({id:'@jlc-agent/dsh-context',factory:require=>{
   const React=require('react');
   const {createPortal}=require('react-dom');
   const {IconSettingsOutlineRegular,IconFolderOpenRegular,IconCloseOutlineRegular,
@@ -412,7 +412,7 @@ window.__ModuleLoader__.load({id:'jlc-dsh-context',factory:require=>{
         active:ctx.slots.entriesOfSlot(options.name).some(e=>e.component===slotComponents[index]),
         winners:ctx.slots.entriesOfSlot(options.name).filter(e=>e.options.id===options.id).length})),
       create:options=>controller.openCurrent(true,options),open:id=>ctx.uiWorkspace.openSession(id),project:controller.source.getSnapshot,
-      ui:()=>({panels:ctx.slots.entries('sidebar.panellist').map(e=>e.options.id),settings:ctx.slots.entries('settings.section').map(e=>e.options.id),headerUtilities:ctx.slots.entries('conversation.session.header.utilities').map(e=>e.options.id),onboarding:ctx.slots.entries('settings.onboarding').map(e=>e.options.id),views:ctx.slots.entries('conversation.view').map(e=>e.options.id),commands:ctx.get('shortcuts').catalog.getSnapshot().map(e=>e.id),workspaces:ctx.workspaces.list.getSnapshot().items.map(w=>({id:w.workspaceId,path:w.path,sessionIds:w.sessionIds})),sessions:Object.fromEntries(Object.entries(ctx.sessions.list.getSnapshot().byId).map(([id,s])=>[id,{id,cwd:s.cwd,title:s.displayTitle,blank:s.blank}]))}),
+      ui:()=>({panels:ctx.slots.entries('sidebar.panellist').map(e=>e.options.id),settings:ctx.slots.entries('settings.section').map(e=>e.options.id),headerUtilities:ctx.slots.entries('conversation.session.header.utilities').map(e=>e.options.id),onboarding:ctx.slots.entries('settings.onboarding').map(e=>e.options.id),views:ctx.slots.entries('conversation.view').map(e=>e.options.id),commands:ctx.get('shortcuts').catalog.getSnapshot().map(e=>e.id),workspaces:ctx.workspaces.list.getSnapshot().items.map(w=>({id:w.workspaceId,path:w.path,sessionIds:w.sessionIds})),sessions:Object.fromEntries(Object.entries(ctx.sessions.list.getSnapshot().byId).map(([id,s])=>[id,{id,cwd:s.cwd,title:s.displayTitle,blank:s.blank,agentPreset:s.projectionValues?.agentPreset}]))}),
       newFromNavigation:workspaceId=>ctx.uiWorkspace.startSession(workspaceId),
       workspaceAdd:()=>{
         const shortcuts=ctx.get('shortcuts'),binding=shortcuts.catalog.getSnapshot().find(row=>row.id==='workspace.add')?.binding;

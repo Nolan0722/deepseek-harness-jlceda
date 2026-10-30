@@ -116,6 +116,12 @@ function assertLayout(layout){
   const conversationId=await evaluate(frame,'window.__JLC_DSH_CONTEXT_TEST__.create({agentPreset:"standard"})');
   await waitFor(()=>evaluate(frame,'document.querySelector("[data-jlc-binding]")?.dataset.jlcBinding==="bound"&&document.querySelector("[data-jlc-mcp]")?.dataset.jlcMcp==="connected"&&!!document.querySelector(".jlc-session-title__current")&&!!document.querySelector(".jlc-session-actions [data-slot] > *")'));
   const target=await evaluate(frame,`window.jlcEDAContext.select(${JSON.stringify(conversationId)})`);assert.equal(target.target.projectName,projectName);assert.equal(path.resolve(target.target.workspaceDirectory),directory);
+  const prompt=await request(host.contextPipe+'-dsh-test',{conversationId,action:'prompt'});
+  assert.equal(prompt.contexts.length,1);assert.ok(prompt.prompt.includes('读取'));assert.ok(prompt.contexts[0].text.includes(target.target.projectId));
+  assert.deepEqual(prompt.tools.map(tool=>tool.name).sort(),['jlceda_call','jlceda_context','jlceda_discover','jlceda_help']);
+  step('named-plugin-loads-prompt-live-project-context-and-four-native-MCP-proxies');
+  assert.equal((await request(host.contextPipe+'-dsh-test',{conversationId,action:'workspace'})).agentPreset,'standard');
+  assert.equal(await evaluate(frame,`window.__JLC_DSH_CONTEXT_TEST__.ui().sessions[${JSON.stringify(conversationId)}].agentPreset`),'standard');
   await dismissModelOnboarding();
   const transcript=await request(host.contextPipe+'-dsh-test',{conversationId,action:'topbar-transcript-fixture',long:process.argv.includes('--composer-only')});assert.equal(transcript.modelRequests,0);
   await waitFor(()=>evaluate(frame,'document.querySelector(".wSkVaW_root")?.dataset.phase==="active"&&document.body.innerText.includes("这是本地构造的已完成会话")'));

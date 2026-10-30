@@ -1,8 +1,11 @@
 {
-  "name": "jlc-dsh-context",
+  "name": "@jlc-agent/dsh-context",
+  "description": "JLCEDA Agent: project-bound native MCP tools, prompts and embedded sidebar UI. Requires the JLCEDA Agent host.",
   "version": "1.0.0",
   "private": true,
   "main": "index.cjs",
-  "exports": {".": "./index.cjs", "./client": "./client.js", "./package.json": "./package.json"},
-  "dsh": {"client": {"platform": "web", "inject": ["@deepseek-ai/dsh-client-locale", "@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-ui-renderer", "@deepseek-ai/dsh-client-ui-session", "@deepseek-ai/dsh-api-session-controller", "@deepseek-ai/dsh-client-ui-workspace", "@deepseek-ai/dsh-api-workspace-controller"]}}
+  "files": ["index.cjs", "client.js", "prompt.cjs", "skills/", "cordis.patch.yml", "locale/*.json", "README.md"],
+  "exports": {".": "./index.cjs", "./client": "./client.js", "./package.json": "./package.json", "./locale/*.json": "./locale/*.json"},
+  "peerDependencies": {"@deepseek-ai/dsh-system-prompt": "0.2.1-rc.2", "@deepseek-ai/dsh-llm": "0.2.1-rc.2", "@deepseek-ai/dsh-skill-filesystem": "0.2.1-rc.2"},
+  "dsh": {"bundle": {"patch": "./cordis.patch.yml"}, "client": {"platform": "web", "inject": ["@deepseek-ai/dsh-client-locale", "@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-ui-renderer", "@deepseek-ai/dsh-client-ui-session", "@deepseek-ai/dsh-api-session-controller", "@deepseek-ai/dsh-client-ui-workspace", "@deepseek-ai/dsh-api-workspace-controller"]}}
 }

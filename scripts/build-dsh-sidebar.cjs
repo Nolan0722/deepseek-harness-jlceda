@@ -28,12 +28,10 @@ const specs=[
     return s;
   }],
   ['ui-conversation','8554738cbeeb5218ad1bfa4773ef094363b066d052a1893d7a96797c5bc33a63',s=>{
-    // During native HMR the main slot is already mounted. Do not publish the
-    // composer before its ConversationController service is ready; otherwise
-    // the slot's error boundary permanently hides the input after the reload.
-    // Cordis owns registration/disposal through the actual service dependency.
-    s=replace(s,'slots.inject("main", function* () {','ctx.inject(["conversation"], scope => scope.slots.inject("main", function* () {');
-    s=replace(s,'yield registerComposerBar();\n\t\t\t});','yield registerComposerBar();\n\t\t\t}));');
+    // Keep declarations before ConversationController publishes its service:
+    // native consumers (including agent-preset) register against those slots.
+    // Only the composer needs to wait for the service during native HMR.
+    s=replace(s,'yield registerComposerBar();','const composer = ctx.inject(["conversation"], () => registerComposerBar());\n                yield () => composer.dispose();');
     // Presentation seam only. The original registration remains the owner of
     // its store, session scope and child slots; delegate its bound props intact.
     s=replace(s,'"conversation.session.header.lineage": {','"conversation.session.header.presentation": {kind:"single",scope:"session"},\n                    "conversation.session.header.lineage": {');

@@ -48,6 +48,8 @@ try {
     Write-Host 'Restoring the DSH runtime from lockfile...'
     & $nodeExecutable $npmCli ci --prefix (Join-Path $projectDirectory 'runtime') --no-audit --no-fund
     if ($LASTEXITCODE -ne 0) { throw 'DSH dependency restore failed.' }
+    & $nodeExecutable (Join-Path $projectDirectory 'host\dsh-profile.cjs')
+    if ($LASTEXITCODE -ne 0) { throw 'Local JLCEDA plugin installation or profile registration failed.' }
     $env:JLC_OPENSSL = (Resolve-Path -LiteralPath $OpenSslPath).ProviderPath
     & $nodeExecutable (Join-Path $projectDirectory 'scripts\build-dsh-embed.cjs')
     if ($LASTEXITCODE -ne 0) { throw 'DSH embedding build failed.' }

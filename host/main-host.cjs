@@ -8,6 +8,7 @@ const { ContextHost } = require('./context-host.cjs');
 const { createDshNetwork } = require('./dsh-network.cjs');
 const { sidebarProfile } = require('./sidebar-profile.cjs');
 const { prepareDshTemp } = require('./dsh-temp.cjs');
+const { prepareDshProfile } = require('./dsh-profile.cjs');
 const root = path.resolve(__dirname, '..');
 const lab = path.join(root, 'lab');
 const nativeRequests=require('./native-request-lifecycle.cjs').createNativeRequestLifecycle();
@@ -74,8 +75,9 @@ function stopChild() {
   startPromise = null;
 }
 function createOverlay() {
-  const overlay = [...sidebarProfile(),{id:'webserver',config:{host:'127.0.0.1',port:0,tls,compression:'gzip'}},{ insert: [{ id: 'jlc-context', name: path.join(root,'plugins/jlc-context/index.cjs'),
-    config:{pipe:contextHost.pipe,debug:app.commandLine.hasSwitch('remote-debugging-port'),systemPromptModule:path.join(root,'runtime/node_modules/@deepseek-ai/dsh-system-prompt/lib/index.js')} }] }];
+  const debug=app.commandLine.hasSwitch('remote-debugging-port');
+  const overlay = [...sidebarProfile(),{id:'webserver',config:{host:'127.0.0.1',port:0,tls,compression:'gzip'}},{id:'jlc-context',
+    config:{pipe:contextHost.pipe,debug,...(debug?{fixtureRoot:path.join(lab,'topbar-fixture')}:{})}}];
   const file = path.join(lab, 'jlceda.cordis.json');
   fs.writeFileSync(file, JSON.stringify(overlay, null, 2));
   return file;
@@ -86,6 +88,7 @@ function start() {
   fs.mkdirSync(path.join(lab, 'workspace'), { recursive: true });
   const dshTemp=prepareDshTemp(profile);
   const env = { ...process.env, TEMP:dshTemp,TMP:dshTemp,DSH_HOME: path.join(lab, 'dsh-home'), PATH: `${path.dirname(node)};${process.env.PATH}` };
+  prepareDshProfile(root,env.DSH_HOME);
   delete env.ELECTRON_RUN_AS_NODE;
   // The independent profile owns model credentials; no ambient API keys are imported.
   for (const key of Object.keys(env)) if (/KEY|PASSWORD|SECRET|TOKEN/i.test(key)) delete env[key];

@@ -4,6 +4,8 @@
 
 顶部使用单行布局，直接显示会话名称与 Agent 模式。工程、活动图页、MCP 实际连接状态、会话与工程的绑定关系集中在关联状态按钮的详情中；异常状态会在按钮上标记。工程工作区和会话历史通过文件夹按钮打开，齿轮打开原生设置。默认只展示对话，不显示轨迹切换和日志下载菜单；后台轨迹记录及原生日志导出能力保留。
 
+自有插件包含原理图与 PCB 技能，可直接描述任务，或使用 `/jlceda-schematic`、`/jlceda-pcb` 显式调用。流程按“读取真实状态 → 执行操作 → 回读验证”组织，区分新设计、局部修改和只读检查，继续复用嘉立创原生 MCP；技能不替代实际连接、ERC/DRC 或保存验证。技能正文和参考资料位于 `plugins/jlc-context/skills/`，详见 [插件文档](plugins/jlc-context/README.md)。
+
 ## 安装
 
 准备 Windows x64、带 npm 的 Node.js，以及 Git for Windows（提供 OpenSSL）。也可以单独提供 OpenSSL。Windows 的 .NET Framework C# 编译器用于生成无控制台启动器，不需要安装 Visual Studio。
@@ -54,6 +56,8 @@ cd deepseek-harness-jlceda
 
 ```powershell
 $node = '.\.tools\node_modules\node-win-x64\bin\node.exe'
+# 原理图/PCB 技能：实际打包、原生发现与加载、PTC 呈现、卸载重载；不启动 EDA：
+& $node --test .\scripts\verify-domain-skills.cjs
 & $node --test .\scripts\verify-folder-project.cjs .\scripts\verify-project-binding.cjs .\scripts\verify-frame-bridge.cjs .\scripts\verify-dsh-network.cjs .\scripts\verify-mcp-transport.cjs .\scripts\verify-project-ready.cjs .\scripts\verify-startup-status.cjs .\scripts\verify-dsh-temp.cjs .\scripts\verify-native-request-lifecycle.cjs
 # 在已完成 setup、没有其他客户端实例占用调试端口的目录内执行：
 & $node .\scripts\verify-portable-runtime.cjs
@@ -79,6 +83,8 @@ Windows PTC 保留原生沙箱、受限令牌、能力 SID、完整性标签及�
 
 ## DSH 扩展与剩余源码改动
 
+自有插件统一为本地包 `@jlc-agent/dsh-context`，源码位于 `plugins/jlc-context/`，没有发布 npm。`setup.ps1` 按锁文件安装本地 `file:` 依赖，并通过 DSH 原生 `dsh.profile.bundles` / `dsh.bundle.patch` 注册；插件管理显示 **JLCEDA Agent** 和包名，不再显示源码文件绝对路径。提示词、工程绑定、工具代理和侧栏定制保持一个包，说明见 [插件文档](plugins/jlc-context/README.md)。宿主仍负责客户端隔离、DOM 内嵌和原生 MCP；单独安装该包不能代替宿主。更新到此包结构后需关闭副本并运行一次 `setup.ps1`，仅重建前端不能安装新增依赖。
+
 `plugins/jlc-context/client.js` 通过原生 slot 的 `priority` 覆盖日志导出菜单、预览版引导、账户式设置入口和右栏展开按钮。官方注册、后台日志及 `/export` 命令保留；引导通过原生 `complete()` 继续到模型登录/API Key 配置。卸载项目插件时，slot 自动恢复官方 occupant，不修改官方组件方法或 DOM 点击行为。
 
 顶部栏与设置弹窗的呈现由自有 `SessionHeader` / `SettingsPanel` 组件负责，布局使用自有 CSS 类。会话标题、原生模式、栏目顺序、栏目图标、响应式弹窗以及账户栏目的显示策略均集中在插件内。插件管理、内置插件、自动化、模型与 Agent 预设的页面内容和业务动作继续使用 DSH 原生组件。
@@ -89,6 +95,6 @@ Windows PTC 保留原生沙箱、受限令牌、能力 SID、完整性标签及�
 
 工作区入口使用原生目录选择能力判断：部署禁用 `directory-picker` 后，原生按钮和菜单自动隐藏，`workspace.add` 快捷键保留注册但被原生逻辑阻止。已撤掉按钮/菜单删除、快捷键删除、`controls.add` 空实现和选择目录回调抑制。`uiWorkspace.startSession` 仍统一创建当前 EDA 工程的会话，即使调用方传入其他工作区；只读工程工作区及服务端窗口/工程绑定校验保持不变。
 
-会话模块另保留一处生命周期修复：用原生 Cordis `ctx.inject(['conversation'], ...)` 将主会话 slot 的注册绑定到会话服务就绪。上游热更新时曾先挂载输入框、再启动服务，触发 `conversation service unavailable` 并使输入框落入 slot 错误边界；此处只修正依赖顺序，不增加重试、替代输入框或禁用热更新。
+会话模块另保留一处生命周期修复：用原生 Cordis `ctx.inject(['conversation'], ...)` 仅将输入框组件的注册绑定到会话服务就绪。其他会话扩展点仍先于服务发布建立，确保原生 Agent 预设等组件能正常注册。上游热更新时曾先挂载输入框、再启动服务，触发 `conversation service unavailable` 并使输入框落入 slot 错误边界；此处只修正依赖顺序，不增加重试、替代输入框或禁用热更新。
 
 仍保留的源码改动包括上述展示接入点、跨组件设置导航服务、插件管理和自动化页面的挂载/导航、工程会话创建路由、只读工作区按钮、右栏内部折叠控制和部分主题图形。工作区 slot 仅拥有选择弹窗，不拥有触发按钮。DOM 内嵌所需的认证 Cookie 与安全响应头为另外两处后端改动。

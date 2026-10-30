@@ -4,20 +4,20 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),{spawn}=require('node:child_process');
 const {chromium}=require('../.tools/node_modules/playwright-core');
 const {sidebarProfile}=require('../host/sidebar-profile.cjs');
+const {prepareDshProfile}=require('../host/dsh-profile.cjs');
 const root=path.resolve(__dirname,'..'),home=fs.mkdtempSync(path.join(root,'lab/sidebar-onboarding-'));
 const report={date:new Date().toISOString(),home,steps:[],modelRequests:0,computerUseUsed:false};
-const node=path.join(root,'.tools/node_modules/node-win-x64/bin/node.exe');let child,browser;
+const node=path.join(root,'.tools/node_modules/node-win-x64/bin/node.exe');let child,browser,log='';
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 async function waitFor(fn){const end=Date.now()+60000;while(Date.now()<end){const r=await fn();if(r)return r;await delay(200);}throw Error('Fresh onboarding timed out');}
 function step(name){report.steps.push({name});console.log(name);}
 (async()=>{try{
-  const profile=path.join(home,'profiles/web');fs.mkdirSync(profile,{recursive:true});
-  fs.writeFileSync(path.join(profile,'package.json'),JSON.stringify({name:'dsh-profile-web',private:true,dependencies:{},dsh:{profile:{bundles:['@deepseek-ai/dsh-base','@deepseek-ai/dsh-web-app']}}}));fs.writeFileSync(path.join(profile,'cordis.yml'),'[]');
-  const overlay=path.join(home,'sidebar.json');fs.writeFileSync(overlay,JSON.stringify([...sidebarProfile(),{id:'webserver',config:{host:'127.0.0.1',port:0,tls:{certFile:path.join(root,'lab/tls/cert.pem'),keyFile:path.join(root,'lab/tls/key.pem')}}},{id:'ui-settings-models',config:{credentialOnboarding:true}},{insert:[{id:'jlc-context',name:path.join(root,'plugins/jlc-context/index.cjs'),config:{pipe:'unused-onboarding-fixture'}}]}]));
+  prepareDshProfile(root,home);
+  const overlay=path.join(home,'sidebar.json');fs.writeFileSync(overlay,JSON.stringify([...sidebarProfile(),{id:'webserver',config:{host:'127.0.0.1',port:0,tls:{certFile:path.join(root,'lab/tls/cert.pem'),keyFile:path.join(root,'lab/tls/key.pem')}}},{id:'ui-settings-models',config:{credentialOnboarding:true}},{id:'jlc-context',config:{pipe:'\\\\.\\pipe\\jlc-dsh-context-unused-onboarding-fixture'}}]));
   assert.equal(fs.existsSync(path.join(home,'.credentials.yaml')),false);
   const env={...process.env,DSH_HOME:home,PATH:path.dirname(node)+';'+process.env.PATH};for(const key of Object.keys(env))if(/KEY|PASSWORD|SECRET|TOKEN/i.test(key))delete env[key];delete env.ELECTRON_RUN_AS_NODE;
   child=spawn(node,[path.join(root,'runtime/node_modules/@deepseek-ai/dsh/lib/bin.js'),'web','--patch',overlay,'--host','127.0.0.1','--port','0','--no-open'],{cwd:root,env,windowsHide:true,stdio:['ignore','pipe','pipe']});
-  let url,log='';const receive=data=>{log=(log+data).slice(-12000);url=log.match(/https:\/\/127\.0\.0\.1:\d+\/[^\s\x1b]*[?&]token=[A-Za-z0-9._~%-]+/)?.[0];};child.stdout.on('data',receive);child.stderr.on('data',receive);
+  let url;const receive=data=>{log=(log+data).slice(-12000);url=log.match(/https:\/\/127\.0\.0\.1:\d+\/[^\s\x1b]*[?&]token=[A-Za-z0-9._~%-]+/)?.[0];};child.stdout.on('data',receive);child.stderr.on('data',receive);
   await waitFor(()=>{if(child.exitCode!==null)throw Error('Fresh DSH failed: '+log.replace(/([?&]token=)[^\s]+/g,'$1[REDACTED]'));return url;});
   browser=await chromium.launch({channel:'msedge',headless:true,args:['--disable-gpu'],});
   const outer=await browser.newPage({viewport:{width:440,height:820},ignoreHTTPSErrors:true});let modelRequests=0;
@@ -58,6 +58,16 @@ function step(name){report.steps.push({name});console.log(name);}
   await page.getByRole('button',{name:'模型',exact:true}).click();
   await page.getByRole('button',{name:'添加模型提供商',exact:false}).waitFor();
   step('model-settings-remain-reachable-after-skipping-first-configuration');
+  await page.locator('[data-jlc-settings-section="plugin-manager"]').click();
+  const manager=page.locator('[data-jlc-plugin-manager-settings]');
+  await manager.getByRole('button',{name:/JLCEDA Agent/}).first().click();
+  await manager.getByText('@jlc-agent/dsh-context',{exact:true}).first().waitFor();
+  assert.ok((await manager.innerText()).includes('JLCEDA Agent'));
+  const row=manager.locator('[data-plugin-row]').filter({hasText:'@jlc-agent/dsh-context'});
+  assert.ok((await row.innerText()).includes('@jlc-agent/dsh-context'));
+  assert.ok(!(await row.innerText()).includes(path.join(root,'plugins')));
+  assert.notEqual(await row.getAttribute('data-state'),'failed');
+  step('native-plugin-manager-shows-local-bundle-name-and-localized-title');
   await page.getByRole('button',{name:'关闭',exact:true}).click();
   // Re-enter a fresh document: completing the preview step must not leave the
   // coordinator stuck or write a fake acknowledgement into native settings.
@@ -67,6 +77,7 @@ function step(name){report.steps.push({name});console.log(name);}
   step('reload-skips-preview-and-still-reaches-native-credential-onboarding');
   assert.equal(modelRequests,0);report.modelRequests=modelRequests;step('no-model-request-and-no-credential-submission');report.passed=true;
 }catch(error){report.passed=false;report.error=error.stack;process.exitCode=1;console.error(error);
+  report.serverLog=log.replace(/([?&]token=)[^\s"<>]+/g,'$1[REDACTED]');
   if(browser){const page=browser.contexts()[0]?.pages()[0];if(page){report.visibleText=(await page.locator('body').innerText()).slice(0,3000);await page.screenshot({path:path.join(root,'evidence/sidebar-onboarding-failure.png')});}}
 }finally{
   await browser?.close();if(child&&child.exitCode===null){child.kill();await new Promise(resolve=>{child.once('exit',resolve);setTimeout(resolve,5000);});}
